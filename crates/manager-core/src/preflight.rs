@@ -1,4 +1,4 @@
-use std::{path::Path, process::Command};
+use std::{fs::OpenOptions, path::Path, process::Command};
 
 use crate::config::Config;
 
@@ -24,6 +24,7 @@ impl CheckResult {
 
 pub trait HostProbe {
     fn path_exists(&self, path: &Path) -> bool;
+    fn path_read_write(&self, path: &Path) -> bool;
     fn command_succeeds(&self, program: &str, args: &[&str]) -> bool;
     fn interface_has_address(&self, interface: &str, address: &str) -> bool;
 }
@@ -33,6 +34,10 @@ pub struct SystemProbe;
 impl HostProbe for SystemProbe {
     fn path_exists(&self, path: &Path) -> bool {
         path.exists()
+    }
+
+    fn path_read_write(&self, path: &Path) -> bool {
+        OpenOptions::new().read(true).write(true).open(path).is_ok()
     }
 
     fn command_succeeds(&self, program: &str, args: &[&str]) -> bool {
@@ -58,7 +63,7 @@ impl HostProbe for SystemProbe {
 #[must_use]
 pub fn run(config: &Config, probe: &impl HostProbe) -> Vec<CheckResult> {
     let mut results = vec![
-        path_check(probe, "kvm", "/dev/kvm"),
+        kvm_check(probe),
         command_check(probe, "qemu", "qemu-system-x86_64", &["--version"]),
         command_check(probe, "libvirt", "virsh", &["--version"]),
         command_check(probe, "nftables", "nft", &["--version"]),
@@ -87,6 +92,28 @@ pub fn run(config: &Config, probe: &impl HostProbe) -> Vec<CheckResult> {
         },
     });
     results
+}
+
+fn kvm_check(probe: &impl HostProbe) -> CheckResult {
+    let path = Path::new("/dev/kvm");
+    let exists = probe.path_exists(path);
+    let accessible = exists && probe.path_read_write(path);
+    CheckResult {
+        name: "kvm",
+        status: if accessible {
+            CheckStatus::Pass
+        } else {
+            CheckStatus::Fail
+        },
+        detail: if accessible {
+            "/dev/kvm is readable and writable by this process".into()
+        } else if exists {
+            "/dev/kvm exists but is not accessible; start a new login session or run newgrp kvm"
+                .into()
+        } else {
+            "required path /dev/kvm does not exist".into()
+        },
+    }
 }
 
 fn path_check(probe: &impl HostProbe, name: &'static str, path: &str) -> CheckResult {
@@ -139,12 +166,39 @@ mod tests {
         fn path_exists(&self, _path: &Path) -> bool {
             false
         }
+        fn path_read_write(&self, _path: &Path) -> bool {
+            false
+        }
         fn command_succeeds(&self, _program: &str, _args: &[&str]) -> bool {
             false
         }
         fn interface_has_address(&self, _interface: &str, _address: &str) -> bool {
             false
         }
+    }
+
+    struct InaccessibleKvmProbe;
+
+    impl HostProbe for InaccessibleKvmProbe {
+        fn path_exists(&self, path: &Path) -> bool {
+            path == Path::new("/dev/kvm")
+        }
+        fn path_read_write(&self, _path: &Path) -> bool {
+            false
+        }
+        fn command_succeeds(&self, _program: &str, _args: &[&str]) -> bool {
+            false
+        }
+        fn interface_has_address(&self, _interface: &str, _address: &str) -> bool {
+            false
+        }
+    }
+
+    #[test]
+    fn reports_stale_kvm_group_session() {
+        let result = kvm_check(&InaccessibleKvmProbe);
+        assert!(!result.passed());
+        assert!(result.detail.contains("newgrp kvm"));
     }
 
     #[test]
