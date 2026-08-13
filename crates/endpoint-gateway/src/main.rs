@@ -1,14 +1,10 @@
-use std::{net::SocketAddr, path::PathBuf, process::ExitCode, sync::Arc, time::Duration};
+use std::{net::SocketAddr, path::PathBuf, process::ExitCode, time::Duration};
 
 use anyhow::{Context, bail};
 use clap::Parser;
+use endpoint_gateway::serve;
 use manager_core::{config::Config, endpoint::PortRange};
-use tokio::{
-    io::copy_bidirectional,
-    net::{TcpListener, TcpStream},
-    sync::Semaphore,
-    task::JoinSet,
-};
+use tokio::net::TcpListener;
 
 #[derive(Debug, Parser)]
 #[command(version, about = "Lease-bounded ADB TCP endpoint")]
@@ -40,52 +36,20 @@ async fn main() -> anyhow::Result<ExitCode> {
     let listener = TcpListener::bind(listen)
         .await
         .with_context(|| format!("failed to bind endpoint {listen}"))?;
-    let deadline = tokio::time::sleep(Duration::from_secs(cli.lease_seconds));
-    tokio::pin!(deadline);
-    let permits = Arc::new(Semaphore::new(cli.max_connections));
-    let mut connections = JoinSet::new();
-
-    eprintln!(
-        "ADB endpoint active: {listen} -> {} for {} seconds",
-        cli.guest, cli.lease_seconds
-    );
-
-    loop {
-        tokio::select! {
-            () = &mut deadline => break,
-            signal = tokio::signal::ctrl_c() => {
-                signal.context("failed to listen for shutdown signal")?;
-                break;
-            }
-            accepted = listener.accept() => {
-                let (mut client, peer) = accepted.context("failed to accept client")?;
-                let Ok(permit) = Arc::clone(&permits).try_acquire_owned() else {
-                    eprintln!("connection rejected at limit: {peer}");
-                    continue;
-                };
-                let guest = cli.guest;
-                connections.spawn(async move {
-                    let _permit = permit;
-                    let mut upstream = TcpStream::connect(guest)
-                        .await
-                        .with_context(|| format!("failed to connect guest {guest}"))?;
-                    copy_bidirectional(&mut client, &mut upstream)
-                        .await
-                        .with_context(|| format!("failed to proxy connection from {peer}"))?;
-                    anyhow::Ok(())
-                });
-            }
-            completed = connections.join_next(), if !connections.is_empty() => {
-                if let Some(Err(error)) = completed {
-                    eprintln!("connection task failed: {error}");
-                }
-            }
+    let shutdown = async {
+        if let Err(error) = tokio::signal::ctrl_c().await {
+            eprintln!("shutdown signal listener failed: {error}");
         }
-    }
-
-    connections.abort_all();
-    while connections.join_next().await.is_some() {}
-    eprintln!("ADB endpoint closed");
+    };
+    let reason = serve(
+        listener,
+        cli.guest,
+        Duration::from_secs(cli.lease_seconds),
+        cli.max_connections,
+        shutdown,
+    )
+    .await?;
+    eprintln!("ADB endpoint closed: {reason:?}");
     Ok(ExitCode::SUCCESS)
 }
 
