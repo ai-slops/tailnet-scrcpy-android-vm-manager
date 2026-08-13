@@ -2,6 +2,7 @@
 node = "26.7.0"
 pnpm = "11.21.0"
 rust = "1.97.1"
+zig = "0.15.2"
 
 [settings]
 lockfile = true

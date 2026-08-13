@@ -1,0 +1,14 @@
+[host]
+# Replace with the stable Tailscale IPv4 address assigned to the KVM host.
+tailnet_address = "100.64.0.1"
+
+[network]
+tailscale_interface = "tailscale0"
+libvirt_bridge = "vmbr-android"
+endpoint_port_start = 31000
+endpoint_port_end = 31999
+
+[storage]
+state_dir = "/var/lib/tailnet-android-vm-manager"
+image_dir = "/var/lib/tailnet-android-vm-manager/images"
+vm_dir = "/var/lib/tailnet-android-vm-manager/vms"
