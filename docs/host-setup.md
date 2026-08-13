@@ -82,3 +82,31 @@ mise exec -- cargo run -p hostctl -- \
 The hostctl check additionally validates QEMU, libvirt, nftables, Tailscale,
 cgroup v2, the configured Tailscale address, and current-process KVM device
 access.
+
+## Optional Android Emulator spike
+
+The official Android Emulator can validate KVM-backed Android boot and local ADB
+before the production libvirt image is available. It does not reproduce the
+final isolated libvirt network, so it cannot by itself complete the Scrcpy
+Remote endpoint test.
+
+The bootstrap script pins the command-line tools archive and verifies its
+published SHA-256 checksum. Run each step explicitly:
+
+~~~shell
+mise exec -- scripts/android-spike-sdk.sh prepare
+mise exec -- scripts/android-spike-sdk.sh licenses
+mise exec -- scripts/android-spike-sdk.sh install
+mise exec -- scripts/android-spike-sdk.sh create
+newgrp kvm
+mise exec -- scripts/android-spike-sdk.sh check
+mise exec -- scripts/android-spike-sdk.sh start
+~~~
+
+The licenses step displays Google's Android SDK terms and requires the operator
+to accept or reject them interactively. The project does not auto-accept legal
+terms.
+
+The downloaded SDK, system image, AVD, and VM data remain below .local/ and are
+not committed. See the [official SDK manager documentation](https://developer.android.com/tools/sdkmanager)
+and [emulator acceleration documentation](https://developer.android.com/studio/run/emulator-acceleration).
