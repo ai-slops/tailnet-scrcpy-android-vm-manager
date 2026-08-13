@@ -4,6 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use ipnet::IpNet;
 use serde::Deserialize;
 use thiserror::Error;
 
@@ -28,6 +29,7 @@ pub struct HostConfig {
 pub struct NetworkConfig {
     pub tailscale_interface: String,
     pub libvirt_bridge: String,
+    pub guest_subnet: IpNet,
     pub endpoint_port_start: u16,
     pub endpoint_port_end: u16,
 }
@@ -37,6 +39,7 @@ impl Default for NetworkConfig {
         Self {
             tailscale_interface: "tailscale0".into(),
             libvirt_bridge: "vmbr-android".into(),
+            guest_subnet: "10.80.0.0/24".parse().expect("valid default guest subnet"),
             endpoint_port_start: 31_000,
             endpoint_port_end: 31_999,
         }
@@ -102,6 +105,13 @@ impl Config {
                 "host.tailnet_address must be in 100.64.0.0/10".into(),
             ));
         }
+        let guest_network = self.network.guest_subnet.network();
+        if !matches!(guest_network, IpAddr::V4(address) if address.is_private() && !address.is_loopback())
+        {
+            return Err(ConfigError::Validation(
+                "network.guest_subnet must be a private non-loopback IPv4 subnet".into(),
+            ));
+        }
         if self.network.endpoint_port_start < 1024
             || self.network.endpoint_port_start > self.network.endpoint_port_end
         {
@@ -162,6 +172,13 @@ mod tests {
     fn rejects_non_tailnet_address() {
         let mut config = valid();
         config.host.tailnet_address = "192.0.2.1".parse().unwrap();
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_public_guest_subnet() {
+        let mut config = valid();
+        config.network.guest_subnet = "192.0.2.0/24".parse().unwrap();
         assert!(config.validate().is_err());
     }
 

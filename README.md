@@ -25,6 +25,7 @@ libvirt, nftables, persistent qcow2 guests, and AOSP images.
 - [Security model](docs/security.md)
 - [Architecture decisions](docs/decisions.md)
 - [MVP plan](docs/mvp-plan.md)
+- [Scrcpy Remote compatibility spike](docs/compatibility-spike.md)
 
 ## Project status
 
