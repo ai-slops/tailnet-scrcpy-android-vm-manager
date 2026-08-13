@@ -1,0 +1,15 @@
+* text=auto eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+*.avd binary
+*.bin binary
+*.img binary
+*.iso binary
+*.jar binary
+*.keystore binary
+*.qcow2 binary
+*.so binary
+*.zip binary

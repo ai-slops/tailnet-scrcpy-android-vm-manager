@@ -1,0 +1,37 @@
+# Local project state and secrets
+.local/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+
+# Rust
+/target/
+
+# Node.js and pnpm
+/node_modules/
+/dist/
+/coverage/
+*.tsbuildinfo
+.pnpm-debug.log*
+
+# Runtime state
+*.db
+*.db-shm
+*.db-wal
+*.log
+*.pid
+
+# Virtual machine artifacts
+*.img
+*.iso
+*.qcow2
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
