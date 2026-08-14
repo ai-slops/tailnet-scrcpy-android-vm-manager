@@ -65,7 +65,7 @@ package provides newuidmap and newgidmap.
 After starting a fresh login session:
 
 ~~~shell
-scripts/host-smoke.sh
+sh scripts/host-smoke.sh
 ~~~
 
 The script proves that QEMU can initialize KVM, rather than merely checking that
@@ -74,7 +74,7 @@ The script proves that QEMU can initialize KVM, rather than merely checking that
 Then run the project-specific checks:
 
 ~~~shell
-mise exec -- cargo run -p hostctl -- \
+cargo run -p hostctl -- \
   --config .local/spike/config.toml \
   preflight
 ~~~
@@ -94,13 +94,13 @@ The bootstrap script pins the command-line tools archive and verifies its
 published SHA-256 checksum. Run each step explicitly:
 
 ~~~shell
-mise exec -- scripts/android-spike-sdk.sh prepare
-mise exec -- scripts/android-spike-sdk.sh licenses
-mise exec -- scripts/android-spike-sdk.sh install
-mise exec -- scripts/android-spike-sdk.sh create
+sh scripts/android-spike-sdk.sh prepare
+sh scripts/android-spike-sdk.sh licenses
+sh scripts/android-spike-sdk.sh install
+sh scripts/android-spike-sdk.sh create
 newgrp kvm
-mise exec -- scripts/android-spike-sdk.sh check
-mise exec -- scripts/android-spike-sdk.sh start
+sh scripts/android-spike-sdk.sh check
+sh scripts/android-spike-sdk.sh start
 ~~~
 
 The licenses step displays Google's Android SDK terms and requires the operator

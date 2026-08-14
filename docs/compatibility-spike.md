@@ -27,7 +27,7 @@ Export the ADB public key from Scrcpy Remote. Never copy its private key to the
 host or repository.
 
 ~~~shell
-mise exec -- cargo run -p hostctl -- \
+cargo run -p hostctl -- \
   adb-fingerprint /path/to/ios-device.adb.pub
 ~~~
 
@@ -39,7 +39,7 @@ open until that mechanism is selected.
 ## 3. Check the host
 
 ~~~shell
-mise exec -- cargo run -p hostctl -- \
+cargo run -p hostctl -- \
   --config .local/spike/config.toml \
   preflight
 ~~~
@@ -53,7 +53,7 @@ Choose an unused port inside the configured range. The guest must be inside
 network.guest_subnet and must use ADB port 5555.
 
 ~~~shell
-mise exec -- cargo run -p endpoint-gateway -- \
+cargo run -p endpoint-gateway -- \
   --config .local/spike/config.toml \
   --listen-port 31000 \
   --guest 10.80.0.2:5555 \
