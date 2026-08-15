@@ -66,8 +66,8 @@ Exit criteria:
 ## Phase 4: Leased remote endpoints
 
 - Allocate collision-free ports from a configured range.
-- Bind endpoints only on the host Tailscale address.
-- Forward each endpoint to exactly one VM ADB address.
+- Advertise only enabled Android VM `/32` routes from the isolated router VM.
+- Forward only mapped controller sources to one VM ADB address.
 - Enforce expiry, connection limits, and immediate teardown.
 - Restore or remove state safely during reconciliation.
 

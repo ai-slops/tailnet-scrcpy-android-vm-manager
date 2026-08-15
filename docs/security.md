@@ -37,9 +37,9 @@ The system must provide:
 
 ### 3.1 Tailnet admission
 
-Tailnet Lock is the only Tailscale feature treated as a security root. Every host
-and iOS control node must carry a node-key signature rooted in operator-managed
-Tailnet Lock keys.
+Tailnet Lock is the only Tailscale feature treated as a security root. Every
+router VM and iOS control node must carry a node-key signature rooted in
+operator-managed Tailnet Lock keys. The KVM host is not a tailnet node.
 
 Grants are defense in depth. They are not the local application's authorization
 database, and a Tailscale user name, device name, tag, IP address, or `whois`
@@ -110,14 +110,14 @@ Scrcpy Remote data path unless the application explicitly supports it.
 
 ## 6. Firewall invariants
 
-The host must preserve these invariants even when Tailscale Grants are overly
-permissive:
+The router VM and host firewall must preserve these invariants even when
+Tailscale Grants are overly permissive:
 
 ```text
 public/LAN -> management ports       DENY
 public/LAN -> endpoint port range    DENY
-tailscale0 -> VM subnet              DENY by default
-active endpoint -> selected VM ADB   ALLOW for lease lifetime
+router tailscale0 -> VM subnet       DENY by default
+mapped controller -> selected ADB    ALLOW while authorized
 VM -> host management plane          DENY
 VM -> other VM                       DENY
 VM -> internet                       ALLOW through controlled NAT
@@ -139,6 +139,12 @@ Revocation of an iOS control device is complete only after all of the following:
 
 Local ADB revocation and Tailnet Lock revocation are intentionally independent.
 Either boundary should block useful VM control.
+
+The host additionally limits endpoint traffic to configured controller
+Tailscale IPv4 addresses in both nftables and the endpoint gateway. This is a
+defense-in-depth operational restriction, not an independent identity proof:
+without Tailnet Lock, a compromised Tailscale control plane could change the
+node-key-to-IP mapping supplied to the host.
 
 ## 8. Sensitive data
 

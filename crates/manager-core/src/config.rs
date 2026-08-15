@@ -11,8 +11,7 @@ use thiserror::Error;
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
-    pub host: HostConfig,
-    pub tailscale: TailscaleConfig,
+    pub router: RouterConfig,
     #[serde(default)]
     pub network: NetworkConfig,
     #[serde(default)]
@@ -21,43 +20,48 @@ pub struct Config {
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub struct TailscaleConfig {
+pub struct RouterConfig {
     pub hostname: String,
     pub auth_key_file: PathBuf,
+    #[serde(default = "default_tailscale_interface")]
+    pub tailscale_interface: String,
+    pub guest_interface: String,
+    pub lan_address: Ipv4Addr,
     #[serde(default = "default_require_tailnet_lock")]
     pub require_tailnet_lock: bool,
+    pub access: Vec<RouterAccess>,
 }
 
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Hash)]
+#[serde(deny_unknown_fields)]
+pub struct RouterAccess {
+    pub source: Ipv4Addr,
+    pub guest: Ipv4Addr,
+}
+
+fn default_tailscale_interface() -> String {
+    "tailscale0".into()
+}
 const fn default_require_tailnet_lock() -> bool {
     true
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct HostConfig {
-    pub tailnet_address: IpAddr,
-}
-
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub struct NetworkConfig {
-    pub tailscale_interface: String,
     pub libvirt_bridge: String,
     pub guest_subnet: IpNet,
     pub endpoint_port_start: u16,
     pub endpoint_port_end: u16,
-    pub allowed_tailnet_sources: Vec<Ipv4Addr>,
 }
 
 impl Default for NetworkConfig {
     fn default() -> Self {
         Self {
-            tailscale_interface: "tailscale0".into(),
             libvirt_bridge: "vmbr-android".into(),
             guest_subnet: "10.80.0.0/24".parse().expect("valid default guest subnet"),
             endpoint_port_start: 31_000,
             endpoint_port_end: 31_999,
-            allowed_tailnet_sources: vec!["100.64.0.2".parse().expect("valid tailnet IP")],
         }
     }
 }
@@ -112,15 +116,6 @@ impl Config {
     }
 
     pub fn validate(&self) -> Result<(), ConfigError> {
-        let octets = match self.host.tailnet_address {
-            IpAddr::V4(value) => value.octets(),
-            IpAddr::V6(_) => [0; 4],
-        };
-        if octets[0] != 100 || !(64..=127).contains(&octets[1]) {
-            return Err(ConfigError::Validation(
-                "host.tailnet_address must be in 100.64.0.0/10".into(),
-            ));
-        }
         let guest_network = self.network.guest_subnet.network();
         if !matches!(guest_network, IpAddr::V4(address) if address.is_private() && !address.is_loopback())
         {
@@ -128,21 +123,30 @@ impl Config {
                 "network.guest_subnet must be a private non-loopback IPv4 subnet".into(),
             ));
         }
-        if self.tailscale.hostname.is_empty()
-            || self.tailscale.hostname.len() > 63
+        if self.router.hostname.is_empty()
+            || self.router.hostname.len() > 63
             || !self
-                .tailscale
+                .router
                 .hostname
                 .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'.')
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'.')
         {
             return Err(ConfigError::Validation(
-                "tailscale.hostname is not a valid DNS-style hostname".into(),
+                "router.hostname is not a valid DNS-style hostname".into(),
             ));
         }
-        if !self.tailscale.auth_key_file.is_absolute() {
+        if !self.router.auth_key_file.is_absolute() {
             return Err(ConfigError::Validation(
-                "tailscale.auth_key_file must be absolute".into(),
+                "router.auth_key_file must be absolute".into(),
+            ));
+        }
+        if !self
+            .network
+            .guest_subnet
+            .contains(&IpAddr::V4(self.router.lan_address))
+        {
+            return Err(ConfigError::Validation(
+                "router.lan_address must be inside network.guest_subnet".into(),
             ));
         }
         if self.network.endpoint_port_start < 1024
@@ -152,42 +156,50 @@ impl Config {
                 "endpoint port range must be ordered and unprivileged".into(),
             ));
         }
-        if self.network.allowed_tailnet_sources.is_empty() {
+        if self.router.access.is_empty() {
             return Err(ConfigError::Validation(
-                "network.allowed_tailnet_sources must contain at least one controller IP".into(),
+                "router.access must contain at least one controller-to-guest mapping".into(),
             ));
         }
-        let mut unique_sources = std::collections::HashSet::new();
-        for source in &self.network.allowed_tailnet_sources {
-            let octets = source.octets();
+        let mut mappings = std::collections::HashSet::new();
+        for access in &self.router.access {
+            let octets = access.source.octets();
             if octets[0] != 100 || !(64..=127).contains(&octets[1]) {
                 return Err(ConfigError::Validation(format!(
-                    "allowed source {source} is outside 100.64.0.0/10"
+                    "controller source {} is outside 100.64.0.0/10",
+                    access.source
                 )));
             }
-            if IpAddr::V4(*source) == self.host.tailnet_address {
-                return Err(ConfigError::Validation(
-                    "the host Tailnet address cannot be an allowed controller source".into(),
-                ));
-            }
-            if !unique_sources.insert(source) {
+            if !self
+                .network
+                .guest_subnet
+                .contains(&IpAddr::V4(access.guest))
+            {
                 return Err(ConfigError::Validation(format!(
-                    "duplicate allowed source {source}"
+                    "routed Android guest {} is outside network.guest_subnet",
+                    access.guest
+                )));
+            }
+            if !mappings.insert(access) {
+                return Err(ConfigError::Validation(format!(
+                    "duplicate router access mapping {} -> {}",
+                    access.source, access.guest
                 )));
             }
         }
         for (name, value) in [
-            ("tailscale_interface", &self.network.tailscale_interface),
+            ("tailscale_interface", &self.router.tailscale_interface),
+            ("guest_interface", &self.router.guest_interface),
             ("libvirt_bridge", &self.network.libvirt_bridge),
         ] {
             if value.is_empty()
                 || value.len() > 15
                 || !value
                     .bytes()
-                    .all(|byte| byte.is_ascii_alphanumeric() || b"_-.".contains(&byte))
+                    .all(|b| b.is_ascii_alphanumeric() || b"_-.".contains(&b))
             {
                 return Err(ConfigError::Validation(format!(
-                    "network.{name} is not a valid Linux interface name"
+                    "{name} is not a valid Linux interface name"
                 )));
             }
         }
@@ -207,63 +219,58 @@ impl Config {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
-
-    fn valid() -> Config {
+    pub(crate) fn valid() -> Config {
         Config {
-            host: HostConfig {
-                tailnet_address: "100.64.0.1".parse().unwrap(),
-            },
-            tailscale: TailscaleConfig {
-                hostname: "android-vm-host".into(),
+            router: RouterConfig {
+                hostname: "android-tailnet-router".into(),
                 auth_key_file: "/run/secrets/tailscale-authkey".into(),
+                tailscale_interface: "tailscale0".into(),
+                guest_interface: "ens3".into(),
+                lan_address: "10.80.0.1".parse().unwrap(),
                 require_tailnet_lock: true,
+                access: vec![RouterAccess {
+                    source: "100.64.0.2".parse().unwrap(),
+                    guest: "10.80.0.2".parse().unwrap(),
+                }],
             },
             network: NetworkConfig::default(),
             storage: StorageConfig::default(),
         }
     }
-
     #[test]
     fn accepts_valid_config() {
         valid().validate().unwrap();
     }
-
-    #[test]
-    fn rejects_non_tailnet_address() {
-        let mut config = valid();
-        config.host.tailnet_address = "192.0.2.1".parse().unwrap();
-        assert!(config.validate().is_err());
-    }
-
     #[test]
     fn rejects_public_guest_subnet() {
-        let mut config = valid();
-        config.network.guest_subnet = "192.0.2.0/24".parse().unwrap();
-        assert!(config.validate().is_err());
+        let mut c = valid();
+        c.network.guest_subnet = "192.0.2.0/24".parse().unwrap();
+        assert!(c.validate().is_err());
     }
-
     #[test]
     fn rejects_relative_storage() {
-        let mut config = valid();
-        config.storage.vm_dir = "vms".into();
-        assert!(config.validate().is_err());
+        let mut c = valid();
+        c.storage.vm_dir = "vms".into();
+        assert!(c.validate().is_err());
     }
-
     #[test]
-    fn rejects_empty_or_non_tailnet_source_allowlist() {
-        let mut config = valid();
-        config.network.allowed_tailnet_sources.clear();
-        assert!(config.validate().is_err());
-        config.network.allowed_tailnet_sources = vec!["192.0.2.1".parse().unwrap()];
-        assert!(config.validate().is_err());
+    fn rejects_empty_access() {
+        let mut c = valid();
+        c.router.access.clear();
+        assert!(c.validate().is_err());
     }
-
     #[test]
-    fn rejects_host_as_controller_source() {
-        let mut config = valid();
-        config.network.allowed_tailnet_sources = vec!["100.64.0.1".parse().unwrap()];
-        assert!(config.validate().is_err());
+    fn rejects_non_tailnet_source() {
+        let mut c = valid();
+        c.router.access[0].source = "192.0.2.1".parse().unwrap();
+        assert!(c.validate().is_err());
+    }
+    #[test]
+    fn rejects_guest_outside_subnet() {
+        let mut c = valid();
+        c.router.access[0].guest = "10.81.0.2".parse().unwrap();
+        assert!(c.validate().is_err());
     }
 }

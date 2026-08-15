@@ -17,11 +17,13 @@ dedicated tailnet prevents unrelated signed nodes from sharing the trust domain.
 
 ### ADR-002: Do not install Tailscale in Android guests
 
-**Decision:** Tailscale terminates on the KVM host. Guests use an isolated
-libvirt network and are not advertised through a subnet router.
+**Decision:** Tailscale terminates in a dedicated minimal router VM. The KVM
+host and Android guests are not tailnet nodes. The router advertises only one
+`/32` per enabled persistent Android VM.
 
-**Rationale:** This centralizes network policy, keeps VM images independent of
-Tailscale, and avoids exposing the guest subnet to every permitted tailnet peer.
+**Rationale:** This isolates Tailscale state from the host, keeps Android images
+independent of Tailscale, and exposes only controller-to-ADB flows selected by
+router-local forwarding policy.
 
 ### ADR-003: Use device credentials, not users
 

@@ -70,58 +70,14 @@ impl HostProbe for SystemProbe {
 
 #[must_use]
 pub fn run(config: &Config, probe: &impl HostProbe) -> Vec<CheckResult> {
-    let mut results = vec![
+    let results = vec![
         kvm_check(probe),
         command_check(probe, "qemu", "qemu-system-x86_64", &["--version"]),
         command_check(probe, "libvirt", "virsh", &["--version"]),
         command_check(probe, "nftables", "nft", &["--version"]),
-        command_check(probe, "tailscale", "tailscale", &["version"]),
         path_check(probe, "cgroup-v2", "/sys/fs/cgroup/cgroup.controllers"),
     ];
-    let address = config.host.tailnet_address.to_string();
-    let present = probe.interface_has_address(&config.network.tailscale_interface, &address);
-    results.push(CheckResult {
-        name: "tailnet-address",
-        status: if present {
-            CheckStatus::Pass
-        } else {
-            CheckStatus::Fail
-        },
-        detail: if present {
-            format!(
-                "{address} is assigned to {}",
-                config.network.tailscale_interface
-            )
-        } else {
-            format!(
-                "{address} is not assigned to {}",
-                config.network.tailscale_interface
-            )
-        },
-    });
-    if config.tailscale.require_tailnet_lock {
-        let status = probe.command_output("tailscale", &["lock", "status"]);
-        let enabled = status
-            .as_deref()
-            .is_some_and(|value| value.contains("Tailnet Lock is ENABLED."));
-        let accessible = status
-            .as_deref()
-            .is_some_and(|value| value.contains("This node is accessible under Tailnet Lock."));
-        results.push(CheckResult {
-            name: "tailnet-lock",
-            status: if enabled && accessible {
-                CheckStatus::Pass
-            } else {
-                CheckStatus::Fail
-            },
-            detail: if enabled && accessible {
-                "Tailnet Lock is enabled and this host is signed".into()
-            } else {
-                "Tailnet Lock is not enabled or this host still requires a signing-node signature"
-                    .into()
-            },
-        });
-    }
+    let _ = config;
     results
 }
 
@@ -189,7 +145,6 @@ fn command_check(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{HostConfig, NetworkConfig, StorageConfig};
 
     struct MissingProbe;
 
@@ -240,24 +195,9 @@ mod tests {
 
     #[test]
     fn reports_missing_dependencies() {
-        let config = Config {
-            host: HostConfig {
-                tailnet_address: "100.64.0.1".parse().unwrap(),
-            },
-            tailscale: crate::config::TailscaleConfig {
-                hostname: "android-vm-host".into(),
-                auth_key_file: "/run/secrets/tailscale-authkey".into(),
-                require_tailnet_lock: true,
-            },
-            network: NetworkConfig::default(),
-            storage: StorageConfig::default(),
-        };
+        let config = crate::config::tests::valid();
         let results = run(&config, &MissingProbe);
         assert!(results.iter().all(|result| !result.passed()));
-        assert!(
-            results
-                .iter()
-                .any(|result| result.name == "tailnet-address")
-        );
+        assert!(results.iter().any(|result| result.name == "qemu"));
     }
 }

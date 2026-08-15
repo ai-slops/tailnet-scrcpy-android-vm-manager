@@ -5,9 +5,7 @@ use clap::{Parser, Subcommand};
 use manager_core::{
     adb::AdbPublicKey,
     config::Config,
-    firewall,
     preflight::{self, CheckStatus, SystemProbe},
-    tailscale::{self, Enrollment, SystemTailscale},
 };
 
 #[derive(Debug, Parser)]
@@ -26,12 +24,6 @@ struct Cli {
 enum Command {
     /// Validate configuration and required host capabilities.
     Preflight,
-    /// Join Tailscale with the configured auth-key file and report signing state.
-    TailscaleEnroll,
-    /// Print the project-owned nftables endpoint policy.
-    FirewallPrint,
-    /// Atomically install or replace the project-owned nftables endpoint policy.
-    FirewallApply,
     /// Validate an ADB public key and print its stable fingerprint.
     AdbFingerprint {
         /// File containing one Android ADB public-key line.
@@ -59,37 +51,6 @@ fn main() -> anyhow::Result<ExitCode> {
             } else {
                 ExitCode::FAILURE
             })
-        }
-        Command::TailscaleEnroll => {
-            let config = Config::load(&cli.config)
-                .with_context(|| format!("failed to load {}", cli.config.display()))?;
-            match tailscale::enroll(&config, &SystemTailscale)? {
-                Enrollment::ConnectedAndSigned => {
-                    println!("Tailscale is connected and this host is signed by Tailnet Lock.");
-                }
-                Enrollment::AlreadyConnected | Enrollment::ConnectedAwaitingSignature => {
-                    println!(
-                        "Tailscale is connected, but this host still requires a Tailnet Lock signature."
-                    );
-                    println!(
-                        "Run `tailscale lock status`, then execute its sign command on a trusted signing node."
-                    );
-                }
-            }
-            Ok(ExitCode::SUCCESS)
-        }
-        Command::FirewallPrint => {
-            let config = Config::load(&cli.config)
-                .with_context(|| format!("failed to load {}", cli.config.display()))?;
-            print!("{}", firewall::render(&config, false));
-            Ok(ExitCode::SUCCESS)
-        }
-        Command::FirewallApply => {
-            let config = Config::load(&cli.config)
-                .with_context(|| format!("failed to load {}", cli.config.display()))?;
-            firewall::apply(&config)?;
-            println!("Installed nftables Tailnet endpoint allowlist.");
-            Ok(ExitCode::SUCCESS)
         }
         Command::AdbFingerprint { public_key } => {
             let contents = fs::read_to_string(&public_key)

@@ -1,22 +1,21 @@
-[host]
-# Replace with the stable Tailscale IPv4 address assigned to the KVM host.
-tailnet_address = "100.64.0.1"
-
-[tailscale]
-hostname = "android-vm-host"
-# Store the ordinary, preferably one-off auth key here with mode 0600. Never
-# commit the key itself. Tailnet Lock signing remains a separate manual step.
+[router]
+hostname = "android-tailnet-router"
+# This path exists inside the dedicated router VM, never on the KVM host.
 auth_key_file = "/etc/tailnet-android-vm-manager/secrets/tailscale-authkey"
+tailscale_interface = "tailscale0"
+guest_interface = "ens3"
+lan_address = "10.80.0.1"
 require_tailnet_lock = true
 
+[[router.access]]
+source = "100.64.0.2"
+guest = "10.80.0.2"
+
 [network]
-tailscale_interface = "tailscale0"
 libvirt_bridge = "vmbr-android"
+guest_subnet = "10.80.0.0/24"
 endpoint_port_start = 31000
 endpoint_port_end = 31999
-# Stable Tailscale IPv4 addresses of approved iOS controller devices. Tailnet
-# Lock remains mandatory; this list is an additional host-local restriction.
-allowed_tailnet_sources = ["100.64.0.2"]
 
 [storage]
 state_dir = "/var/lib/tailnet-android-vm-manager"

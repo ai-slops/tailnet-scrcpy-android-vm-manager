@@ -26,8 +26,9 @@
                                                       +---------------------+
 ```
 
-Tailscale terminates on the host. Guests have private addresses and are never
-tailnet nodes or advertised subnet routes.
+Tailscale terminates in a dedicated router VM. Android guests and the KVM host
+are never tailnet nodes. The router advertises only explicit Android `/32`
+routes, never the whole guest subnet.
 
 ## 2. Components
 
@@ -58,9 +59,10 @@ arbitrary QEMU arguments, or caller-selected filesystem paths.
 
 ### 2.3 Endpoint gateway
 
-Scrcpy Remote expects an ADB-accessible address. For each active VM lease, the
-host allocates a TCP port from a configured range on its Tailscale address and
-forwards it to that VM's private ADB port.
+Scrcpy Remote expects an ADB-accessible address. For each enabled VM, the
+router advertises that VM's `/32` and forwards only mapped controller addresses
+to its private ADB port 5555. The endpoint gateway remains only as a
+compatibility fallback.
 
 Example:
 
@@ -137,10 +139,10 @@ Required policy:
 - Guests cannot initiate connections to the host management plane.
 - Guests cannot communicate with each other.
 - Guests receive outbound internet access through controlled NAT.
-- No guest subnet route is advertised to the tailnet.
+- Only explicit persistent Android VM `/32` routes are advertised.
 
-Tailscale Grants should allow only the host and required port range, but local
-firewall policy remains mandatory and independent.
+Tailscale Grants should allow only routed Android ADB endpoints, but the router
+VM's local forwarding policy remains mandatory and independent.
 
 ## 4. Connection flow
 
@@ -149,8 +151,8 @@ firewall policy remains mandatory and independent.
 2. Operator imports/registers that device's ADB public key.
 3. Operator grants the device `controller` permission for a VM.
 4. Manager starts the VM and synchronizes its ADB authorized keys.
-5. Manager creates a short-lived endpoint lease and allocates a host port.
-6. Scrcpy Remote connects to the host Tailscale IP and allocated port.
+5. Manager enables the VM `/32` route and router forwarding mapping.
+6. Scrcpy Remote connects to the routed Android VM IP on TCP port 5555.
 7. Tailnet Lock-protected WireGuard admits the network peer.
 8. Android adbd challenges and authenticates the device's ADB private key.
 9. Scrcpy Remote deploys/starts its compatible scrcpy server and controls the VM.

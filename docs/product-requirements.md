@@ -16,7 +16,8 @@ tailnet data-plane connection to the host.
 - The server supports Linux hosts with KVM only.
 - The MVP officially supports one x86-64 Ubuntu LTS host.
 - Android guests do not contain a Tailscale client.
-- The host is the only Tailscale-connected part of the VM network.
+- A dedicated minimal router VM is the only Tailscale-connected part of the VM
+  network. The KVM host and Android guests do not run Tailscale.
 - The deployment uses a dedicated tailnet with Tailnet Lock enabled.
 - Tailnet Lock signing is a manual operator action.
 - Users are not modeled. Authorization is attached directly to device
@@ -102,7 +103,8 @@ guest-accessible data, and changing the guest configuration.
 - GPU or device passthrough
 - Arbitrary user-supplied VM images
 - Multi-user identity, SSO, or role management
-- Direct routing from the tailnet into the guest subnet
+- Advertising the entire guest subnet instead of explicit Android VM `/32`
+  routes
 - Exposing a general-purpose remote ADB server on TCP port 5037
 
 ## 8. Compatibility acceptance test
@@ -111,7 +113,7 @@ Before the production architecture is implemented, a spike must verify the
 current Scrcpy Remote iOS app behavior. It passes only if all of the following
 are demonstrated:
 
-1. The app can connect to a host Tailscale IP and a non-default per-VM TCP port.
+1. The app can connect to a routed Android VM IPv4 address on TCP port 5555.
 2. The app can import or generate a stable ADB key pair.
 3. The corresponding ADB public key can be extracted and fingerprinted.
 4. Android authorizes that key without interactive confirmation on every

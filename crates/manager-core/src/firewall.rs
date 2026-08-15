@@ -1,15 +1,12 @@
+use crate::config::Config;
 use std::{
     io::Write,
     process::{Command, Stdio},
 };
-
 use thiserror::Error;
 
-use crate::config::Config;
-
-const TABLE_FAMILY: &str = "inet";
-const TABLE_NAME: &str = "tailnet_android_vm_manager";
-
+const FAMILY: &str = "inet";
+const TABLE: &str = "tailnet_android_router";
 #[derive(Debug, Error)]
 pub enum FirewallError {
     #[error("could not execute nft: {0}")]
@@ -20,41 +17,39 @@ pub enum FirewallError {
 
 #[must_use]
 pub fn render(config: &Config, replace: bool) -> String {
-    let sources = config
-        .network
-        .allowed_tailnet_sources
-        .iter()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>()
-        .join(", ");
-    let delete = if replace {
-        format!("delete table {TABLE_FAMILY} {TABLE_NAME}\n")
+    let mut rules = if replace {
+        format!("delete table {FAMILY} {TABLE}\n")
     } else {
         String::new()
     };
-    format!(
-        "{delete}table {TABLE_FAMILY} {TABLE_NAME} {{\n\
-         \tset allowed_tailnet_sources {{\n\
-         \t\ttype ipv4_addr\n\
-         \t\tflags constant\n\
-         \t\telements = {{ {sources} }}\n\
-         \t}}\n\
-         \tchain endpoint_input {{\n\
-         \t\ttype filter hook input priority filter; policy accept;\n\
-         \t\tiifname \"{interface}\" ip daddr {destination} tcp dport {start}-{end} ip saddr @allowed_tailnet_sources accept\n\
-         \t\tiifname \"{interface}\" ip daddr {destination} tcp dport {start}-{end} drop\n\
-         \t}}\n\
-         }}\n",
-        interface = config.network.tailscale_interface,
-        destination = config.host.tailnet_address,
-        start = config.network.endpoint_port_start,
-        end = config.network.endpoint_port_end,
-    )
+    rules.push_str(&format!("table {FAMILY} {TABLE} {{\n\tchain forward {{\n\t\ttype filter hook forward priority filter; policy accept;\n"));
+    for access in &config.router.access {
+        rules.push_str(&format!(
+            "\t\tiifname \"{}\" oifname \"{}\" ip saddr {} ip daddr {} tcp dport 5555 accept\n",
+            config.router.tailscale_interface,
+            config.router.guest_interface,
+            access.source,
+            access.guest
+        ));
+    }
+    rules.push_str(&format!(
+        "\t\tiifname \"{}\" oifname \"{}\" ip daddr {} drop\n\t\tiifname \"{}\" oifname \"{}\" ip saddr {} ct state established,related accept\n\t\tiifname \"{}\" oifname \"{}\" ip saddr {} drop\n\t}}\n}}\n",
+        config.router.tailscale_interface,
+        config.router.guest_interface,
+        config.network.guest_subnet,
+        config.router.guest_interface,
+        config.router.tailscale_interface,
+        config.network.guest_subnet,
+        config.router.guest_interface,
+        config.router.tailscale_interface,
+        config.network.guest_subnet
+    ));
+    rules
 }
 
 pub fn apply(config: &Config) -> Result<(), FirewallError> {
     let exists = Command::new("nft")
-        .args(["list", "table", TABLE_FAMILY, TABLE_NAME])
+        .args(["list", "table", FAMILY, TABLE])
         .output()?
         .status
         .success();
@@ -67,12 +62,12 @@ pub fn apply(config: &Config) -> Result<(), FirewallError> {
     child
         .stdin
         .take()
-        .expect("nft stdin is piped")
+        .expect("piped")
         .write_all(render(config, exists).as_bytes())?;
     let output = child.wait_with_output()?;
     if !output.status.success() {
         return Err(FirewallError::Rejected(
-            String::from_utf8_lossy(&output.stderr).trim().to_owned(),
+            String::from_utf8_lossy(&output.stderr).trim().into(),
         ));
     }
     Ok(())
@@ -80,34 +75,14 @@ pub fn apply(config: &Config) -> Result<(), FirewallError> {
 
 #[cfg(test)]
 mod tests {
-    use crate::config::{HostConfig, NetworkConfig, StorageConfig, TailscaleConfig};
-
     use super::*;
-
     #[test]
-    fn renders_only_the_configured_interface_destination_ports_and_sources() {
-        let config = Config {
-            host: HostConfig {
-                tailnet_address: "100.64.0.1".parse().unwrap(),
-            },
-            tailscale: TailscaleConfig {
-                hostname: "android-vm-host".into(),
-                auth_key_file: "/run/secrets/tailscale-authkey".into(),
-                require_tailnet_lock: true,
-            },
-            network: NetworkConfig {
-                allowed_tailnet_sources: vec![
-                    "100.64.0.2".parse().unwrap(),
-                    "100.64.0.3".parse().unwrap(),
-                ],
-                ..NetworkConfig::default()
-            },
-            storage: StorageConfig::default(),
-        };
-        let rules = render(&config, true);
-        assert!(rules.starts_with("delete table inet tailnet_android_vm_manager\n"));
-        assert!(rules.contains("elements = { 100.64.0.2, 100.64.0.3 }"));
-        assert!(rules.contains("iifname \"tailscale0\" ip daddr 100.64.0.1"));
-        assert!(rules.contains("tcp dport 31000-31999"));
+    fn renders_controller_to_guest_only() {
+        let c = crate::config::tests::valid();
+        let r = render(&c, false);
+        assert!(r.contains("ip saddr 100.64.0.2 ip daddr 10.80.0.2 tcp dport 5555 accept"));
+        assert!(r.contains("ip daddr 10.80.0.0/24 drop"));
+        assert!(r.contains("ip saddr 10.80.0.0/24 ct state established,related accept"));
+        assert!(r.contains("oifname \"tailscale0\" ip saddr 10.80.0.0/24 drop"));
     }
 }

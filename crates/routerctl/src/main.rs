@@ -1,0 +1,72 @@
+use anyhow::Context;
+use clap::{Parser, Subcommand};
+use manager_core::{
+    config::Config,
+    firewall,
+    tailscale::{self, Enrollment, SystemTailscale},
+};
+use std::{path::PathBuf, process::ExitCode};
+
+#[derive(Parser)]
+#[command(
+    version,
+    about = "Administration utility for the isolated Tailnet router VM"
+)]
+struct Cli {
+    #[arg(long, default_value = "/etc/tailnet-android-vm-manager/config.toml")]
+    config: PathBuf,
+    #[command(subcommand)]
+    command: Command,
+}
+#[derive(Subcommand)]
+enum Command {
+    Enroll,
+    FirewallPrint,
+    FirewallApply,
+    Preflight,
+}
+
+fn main() -> anyhow::Result<ExitCode> {
+    let cli = Cli::parse();
+    let config = Config::load(&cli.config)
+        .with_context(|| format!("failed to load {}", cli.config.display()))?;
+    match cli.command {
+        Command::Enroll => match tailscale::enroll(&config, &SystemTailscale)? {
+            Enrollment::ConnectedAndSigned => {
+                println!("Router is connected and signed by Tailnet Lock.")
+            }
+            Enrollment::AlreadyConnected | Enrollment::ConnectedAwaitingSignature => {
+                println!("Router is connected but requires a Tailnet Lock signature.");
+                println!(
+                    "Run `tailscale lock status` here and its sign command on a trusted signing node."
+                );
+            }
+        },
+        Command::FirewallPrint => print!("{}", firewall::render(&config, false)),
+        Command::FirewallApply => {
+            firewall::apply(&config)?;
+            println!("Installed router forwarding allowlist.");
+        }
+        Command::Preflight => {
+            let forwarding = std::fs::read_to_string("/proc/sys/net/ipv4/ip_forward")
+                .is_ok_and(|v| v.trim() == "1");
+            let lock = std::process::Command::new("tailscale")
+                .args(["lock", "status"])
+                .output()
+                .is_ok_and(|o| {
+                    o.status.success()
+                        && String::from_utf8_lossy(&o.stdout)
+                            .contains("This node is accessible under Tailnet Lock.")
+                });
+            println!(
+                "[{}] ipv4-forwarding",
+                if forwarding { "PASS" } else { "FAIL" }
+            );
+            println!("[{}] tailnet-lock", if lock { "PASS" } else { "FAIL" });
+            if !forwarding || !lock {
+                return Ok(ExitCode::FAILURE);
+            }
+        }
+    }
+    Ok(ExitCode::SUCCESS)
+}

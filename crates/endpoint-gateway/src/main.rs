@@ -17,7 +17,10 @@ use tokio::net::TcpListener;
 struct Cli {
     #[arg(long, default_value = "/etc/tailnet-android-vm-manager/config.toml")]
     config: PathBuf,
-    /// Port on the configured host Tailscale address.
+    /// Explicit fallback listen address; the KVM host is not a Tailscale node.
+    #[arg(long)]
+    listen_address: IpAddr,
+    /// Port for the optional host-side compatibility fallback.
     #[arg(long)]
     listen_port: u16,
     /// Private Android guest ADB endpoint. Port 5555 is required.
@@ -38,7 +41,7 @@ async fn main() -> anyhow::Result<ExitCode> {
         .with_context(|| format!("failed to load {}", cli.config.display()))?;
     validate(&config, &cli)?;
 
-    let listen = SocketAddr::new(config.host.tailnet_address, cli.listen_port);
+    let listen = SocketAddr::new(cli.listen_address, cli.listen_port);
     let listener = TcpListener::bind(listen)
         .await
         .with_context(|| format!("failed to bind endpoint {listen}"))?;
@@ -51,11 +54,10 @@ async fn main() -> anyhow::Result<ExitCode> {
         listener,
         cli.guest,
         config
-            .network
-            .allowed_tailnet_sources
+            .router
+            .access
             .iter()
-            .copied()
-            .map(IpAddr::V4)
+            .map(|access| IpAddr::V4(access.source))
             .collect::<HashSet<_>>(),
         Duration::from_secs(cli.lease_seconds),
         cli.max_connections,
@@ -88,19 +90,23 @@ fn validate(config: &Config, cli: &Cli) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use manager_core::config::{HostConfig, NetworkConfig, StorageConfig, TailscaleConfig};
+    use manager_core::config::{NetworkConfig, RouterAccess, RouterConfig, StorageConfig};
 
     use super::*;
 
     fn config() -> Config {
         Config {
-            host: HostConfig {
-                tailnet_address: "100.64.0.1".parse().unwrap(),
-            },
-            tailscale: TailscaleConfig {
-                hostname: "android-vm-host".into(),
+            router: RouterConfig {
+                hostname: "android-tailnet-router".into(),
                 auth_key_file: "/run/secrets/tailscale-authkey".into(),
+                tailscale_interface: "tailscale0".into(),
+                guest_interface: "ens3".into(),
+                lan_address: "10.80.0.1".parse().unwrap(),
                 require_tailnet_lock: true,
+                access: vec![RouterAccess {
+                    source: "100.64.0.2".parse().unwrap(),
+                    guest: "10.80.0.2".parse().unwrap(),
+                }],
             },
             network: NetworkConfig::default(),
             storage: StorageConfig::default(),
@@ -110,6 +116,7 @@ mod tests {
     fn args() -> Cli {
         Cli {
             config: "unused".into(),
+            listen_address: "127.0.0.1".parse().unwrap(),
             listen_port: 31_000,
             guest: "10.80.0.2:5555".parse().unwrap(),
             lease_seconds: 60,

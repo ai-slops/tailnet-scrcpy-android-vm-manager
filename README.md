@@ -7,7 +7,8 @@ iOS app.
 The project is designed around a deliberately narrow trust model:
 
 - Android guests do not run Tailscale.
-- Only the KVM host joins a dedicated tailnet.
+- Only a dedicated Tailnet router VM joins the tailnet; the KVM host and
+  Android guests do not run Tailscale.
 - Tailnet Lock controls which physical devices may join that tailnet.
 - The Tailscale control plane is not trusted to authorize access by itself.
 - Android Debug Bridge (ADB) public-key authentication provides an independent
@@ -20,6 +21,7 @@ libvirt, nftables, persistent qcow2 guests, and AOSP images.
 
 ## Documentation
 
+- [Tailscale provisioning](docs/tailscale-provisioning.md)
 - [Product requirements](docs/product-requirements.md)
 - [Architecture](docs/architecture.md)
 - [Security model](docs/security.md)

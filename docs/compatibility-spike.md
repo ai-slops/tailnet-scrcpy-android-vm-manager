@@ -5,16 +5,15 @@ not a production deployment procedure.
 
 ## Prerequisites
 
-- An Ubuntu LTS KVM host enrolled in the dedicated locked tailnet
+- A dedicated Tailnet router VM enrolled in the locked tailnet
 - One Android VM on the configured private guest subnet
 - Authenticated ADB listening on the VM private TCP port 5555
 - An iPhone or iPad with the current Scrcpy Remote release
 - A unique ADB key pair generated or imported by that iOS device
-- A config copied from config.example.toml with the actual host Tailscale address
+- A config copied from config.example.toml with controller-to-guest mappings
 
-Do not expose the endpoint range on a public or LAN interface. The gateway binds
-only the exact configured Tailscale address, but the host firewall must also
-deny the range on every other interface.
+Do not install Tailscale on the KVM host. The isolated router VM must advertise
+only the test Android `/32` and forward only mapped controller traffic to ADB.
 
 ## 1. Record versions
 
@@ -47,29 +46,20 @@ cargo run -p hostctl -- \
 Every check must pass on the actual KVM host. Keep local configuration and test
 artifacts below .local/, which Git ignores.
 
-## 4. Start a bounded endpoint
+## 4. Configure the routed endpoint
 
-Choose an unused port inside the configured range. The guest must be inside
-network.guest_subnet and must use ADB port 5555.
+Apply the router policy inside the router VM:
 
 ~~~shell
-cargo run -p endpoint-gateway -- \
-  --config .local/spike/config.toml \
-  --listen-port 31000 \
-  --guest 10.80.0.2:5555 \
-  --lease-seconds 900
+sudo routerctl firewall-apply
 ~~~
 
-The process binds only to host.tailnet_address, rejects destinations outside the
-guest subnet or port 5555, limits concurrent connections, and closes active
-connections at lease expiry or Ctrl-C.
-
-This is intentionally a manual spike. It does not persist leases, consult the
-future authorization database, or install firewall rules.
+Approve only the test guest `/32` route in the tailnet. This is intentionally a
+manual spike and does not yet reconcile route approval automatically.
 
 ## 5. Connect Scrcpy Remote
 
-Configure Scrcpy Remote with the host Tailscale address, selected endpoint port,
+Configure Scrcpy Remote with the routed Android address and TCP port 5555,
 and the unique ADB key whose public fingerprint was recorded. Record whether the
 app accepts an arbitrary port and speaks directly to adbd. Verify video, touch,
 keyboard, reconnect behavior, and observed scrcpy versions.

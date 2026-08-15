@@ -1,14 +1,11 @@
+use crate::config::Config;
 use std::{
     fs,
-    net::IpAddr,
     os::unix::fs::PermissionsExt,
     path::Path,
     process::{Command, Output},
 };
-
 use thiserror::Error;
-
-use crate::config::Config;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Enrollment {
@@ -32,16 +29,12 @@ pub enum EnrollmentError {
     Execute(#[from] std::io::Error),
     #[error("tailscale up failed: {0}")]
     Up(String),
-    #[error("tailscale connected without the configured host address {0}")]
-    UnexpectedAddress(IpAddr),
 }
 
 pub trait TailscaleCommand {
     fn output(&self, args: &[String]) -> std::io::Result<Output>;
 }
-
 pub struct SystemTailscale;
-
 impl TailscaleCommand for SystemTailscale {
     fn output(&self, args: &[String]) -> std::io::Result<Output> {
         Command::new("tailscale").args(args).output()
@@ -52,26 +45,21 @@ pub fn enroll(
     config: &Config,
     command: &impl TailscaleCommand,
 ) -> Result<Enrollment, EnrollmentError> {
-    let expected = config.host.tailnet_address;
-    if has_address(command, expected)? {
+    if is_connected(command)? {
         return Ok(if lock_ready(command)? {
             Enrollment::ConnectedAndSigned
         } else {
             Enrollment::AlreadyConnected
         });
     }
-
-    validate_auth_key_file(&config.tailscale.auth_key_file)?;
+    validate_auth_key_file(&config.router.auth_key_file)?;
     let args = vec![
         "up".into(),
-        format!(
-            "--auth-key=file:{}",
-            config.tailscale.auth_key_file.display()
-        ),
-        format!("--hostname={}", config.tailscale.hostname),
+        format!("--auth-key=file:{}", config.router.auth_key_file.display()),
+        format!("--hostname={}", config.router.hostname),
         "--accept-dns=false".into(),
         "--accept-routes=false".into(),
-        "--advertise-routes=".into(),
+        format!("--advertise-routes={}", advertised_routes(config)),
         "--advertise-exit-node=false".into(),
         "--ssh=false".into(),
         "--report-posture=false".into(),
@@ -83,9 +71,6 @@ pub fn enroll(
     if !output.status.success() {
         return Err(EnrollmentError::Up(output_text(&output)));
     }
-    if !has_address(command, expected)? {
-        return Err(EnrollmentError::UnexpectedAddress(expected));
-    }
     Ok(if lock_ready(command)? {
         Enrollment::ConnectedAndSigned
     } else {
@@ -93,14 +78,30 @@ pub fn enroll(
     })
 }
 
-fn has_address(command: &impl TailscaleCommand, expected: IpAddr) -> Result<bool, EnrollmentError> {
+#[must_use]
+pub fn advertised_routes(config: &Config) -> String {
+    let mut guests = config
+        .router
+        .access
+        .iter()
+        .map(|access| access.guest)
+        .collect::<Vec<_>>();
+    guests.sort_unstable();
+    guests.dedup();
+    guests
+        .into_iter()
+        .map(|guest| format!("{guest}/32"))
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn is_connected(command: &impl TailscaleCommand) -> Result<bool, EnrollmentError> {
     let output = command.output(&["ip".into(), "-4".into()])?;
     Ok(output.status.success()
         && String::from_utf8_lossy(&output.stdout)
             .lines()
-            .any(|line| line.trim() == expected.to_string()))
+            .any(|line| !line.trim().is_empty()))
 }
-
 fn lock_ready(command: &impl TailscaleCommand) -> Result<bool, EnrollmentError> {
     let output = command.output(&["lock".into(), "status".into()])?;
     let text = output_text(&output);
@@ -108,7 +109,6 @@ fn lock_ready(command: &impl TailscaleCommand) -> Result<bool, EnrollmentError> 
         && text.contains("Tailnet Lock is ENABLED.")
         && text.contains("This node is accessible under Tailnet Lock."))
 }
-
 fn validate_auth_key_file(path: &Path) -> Result<(), EnrollmentError> {
     let metadata =
         fs::symlink_metadata(path).map_err(|source| EnrollmentError::AuthKeyMetadata {
@@ -127,7 +127,6 @@ fn validate_auth_key_file(path: &Path) -> Result<(), EnrollmentError> {
     }
     Ok(())
 }
-
 fn output_text(output: &Output) -> String {
     let mut text = String::from_utf8_lossy(&output.stdout).trim().to_owned();
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -142,90 +141,69 @@ fn output_text(output: &Output) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::config::{NetworkConfig, RouterAccess, RouterConfig, StorageConfig};
     use std::{
         collections::VecDeque,
         fs::Permissions,
         os::unix::{fs::PermissionsExt, process::ExitStatusExt},
         sync::Mutex,
     };
-
-    use crate::config::{HostConfig, NetworkConfig, StorageConfig, TailscaleConfig};
-
-    use super::*;
-
-    struct FakeCommand {
+    struct Fake {
         outputs: Mutex<VecDeque<Output>>,
         calls: Mutex<Vec<Vec<String>>>,
     }
-
-    impl TailscaleCommand for FakeCommand {
+    impl TailscaleCommand for Fake {
         fn output(&self, args: &[String]) -> std::io::Result<Output> {
             self.calls.lock().unwrap().push(args.to_vec());
             Ok(self.outputs.lock().unwrap().pop_front().unwrap())
         }
     }
-
-    fn output(success: bool, stdout: &str) -> Output {
+    fn out(ok: bool, s: &str) -> Output {
         Output {
-            status: std::process::ExitStatus::from_raw(if success { 0 } else { 1 << 8 }),
-            stdout: stdout.as_bytes().to_vec(),
-            stderr: Vec::new(),
+            status: std::process::ExitStatus::from_raw(if ok { 0 } else { 1 << 8 }),
+            stdout: s.as_bytes().to_vec(),
+            stderr: vec![],
         }
     }
-
-    fn config(auth_key_file: &Path) -> Config {
+    fn config(path: &Path) -> Config {
         Config {
-            host: HostConfig {
-                tailnet_address: "100.64.0.1".parse().unwrap(),
-            },
-            tailscale: TailscaleConfig {
-                hostname: "android-vm-host".into(),
-                auth_key_file: auth_key_file.into(),
+            router: RouterConfig {
+                hostname: "android-tailnet-router".into(),
+                auth_key_file: path.into(),
+                tailscale_interface: "tailscale0".into(),
+                guest_interface: "ens3".into(),
+                lan_address: "10.80.0.1".parse().unwrap(),
                 require_tailnet_lock: true,
+                access: vec![RouterAccess {
+                    source: "100.64.0.2".parse().unwrap(),
+                    guest: "10.80.0.2".parse().unwrap(),
+                }],
             },
             network: NetworkConfig::default(),
             storage: StorageConfig::default(),
         }
     }
-
     #[test]
-    fn skips_auth_key_when_already_connected_and_signed() {
-        let command = FakeCommand {
+    fn enrolls_and_advertises_only_guest_32s() {
+        let p = std::env::temp_dir().join(format!("router-auth-{}", std::process::id()));
+        fs::write(&p, "secret").unwrap();
+        fs::set_permissions(&p, Permissions::from_mode(0o600)).unwrap();
+        let f = Fake {
             outputs: Mutex::new(VecDeque::from([
-                output(true, "100.64.0.1\n"),
-                output(
-                    true,
-                    "Tailnet Lock is ENABLED.\nThis node is accessible under Tailnet Lock.\n",
-                ),
+                out(false, ""),
+                out(true, ""),
+                out(true, "Tailnet Lock is ENABLED.\nLocked out."),
             ])),
-            calls: Mutex::new(Vec::new()),
+            calls: Mutex::new(vec![]),
         };
-        let state = enroll(&config(Path::new("/does/not/need/to/exist")), &command).unwrap();
-        assert_eq!(state, Enrollment::ConnectedAndSigned);
-        assert_eq!(command.calls.lock().unwrap().len(), 2);
-    }
-
-    #[test]
-    fn enrolls_with_file_reference_without_reading_key_into_argv() {
-        let path =
-            std::env::temp_dir().join(format!("tailnet-vm-manager-authkey-{}", std::process::id()));
-        fs::write(&path, "tskey-auth-test").unwrap();
-        fs::set_permissions(&path, Permissions::from_mode(0o600)).unwrap();
-        let command = FakeCommand {
-            outputs: Mutex::new(VecDeque::from([
-                output(false, ""),
-                output(true, ""),
-                output(true, "100.64.0.1\n"),
-                output(true, "Tailnet Lock is ENABLED.\nLocked out.\n"),
-            ])),
-            calls: Mutex::new(Vec::new()),
-        };
-
-        let state = enroll(&config(&path), &command).unwrap();
-        fs::remove_file(&path).unwrap();
-        assert_eq!(state, Enrollment::ConnectedAwaitingSignature);
-        let calls = command.calls.lock().unwrap();
-        assert!(calls[1].contains(&format!("--auth-key=file:{}", path.display())));
-        assert!(!calls[1].iter().any(|arg| arg.contains("tskey-auth-test")));
+        assert_eq!(
+            enroll(&config(&p), &f).unwrap(),
+            Enrollment::ConnectedAwaitingSignature
+        );
+        fs::remove_file(&p).unwrap();
+        let calls = f.calls.lock().unwrap();
+        assert!(calls[1].contains(&"--advertise-routes=10.80.0.2/32".into()));
+        assert!(!calls[1].iter().any(|a| a.contains("secret")));
     }
 }

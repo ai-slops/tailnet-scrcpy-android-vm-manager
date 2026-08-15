@@ -86,9 +86,13 @@ cargo run -p hostctl -- \
   preflight
 ~~~
 
-The hostctl check additionally validates QEMU, libvirt, nftables, Tailscale,
-cgroup v2, the configured Tailscale address, and current-process KVM device
-access.
+The hostctl check additionally validates QEMU, libvirt, nftables, cgroup v2,
+and current-process KVM device access. It deliberately does not require
+Tailscale on the KVM host.
+
+Before this check can pass on a deployment host, enroll and manually sign the
+host and install the controller source-IP allowlist as described in
+[Tailscale Provisioning](tailscale-provisioning.md).
 
 ## Optional Android Emulator spike
 
