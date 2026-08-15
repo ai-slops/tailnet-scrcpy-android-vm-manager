@@ -14,6 +14,9 @@ tailscale_interface = "tailscale0"
 libvirt_bridge = "vmbr-android"
 endpoint_port_start = 31000
 endpoint_port_end = 31999
+# Stable Tailscale IPv4 addresses of approved iOS controller devices. Tailnet
+# Lock remains mandatory; this list is an additional host-local restriction.
+allowed_tailnet_sources = ["100.64.0.2"]
 
 [storage]
 state_dir = "/var/lib/tailnet-android-vm-manager"

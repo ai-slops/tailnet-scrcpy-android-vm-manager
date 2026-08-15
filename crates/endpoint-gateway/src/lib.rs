@@ -1,4 +1,9 @@
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::{
+    collections::HashSet,
+    net::{IpAddr, SocketAddr},
+    sync::Arc,
+    time::Duration,
+};
 
 use anyhow::Context;
 use tokio::{
@@ -17,6 +22,7 @@ pub enum StopReason {
 pub async fn serve(
     listener: TcpListener,
     guest: SocketAddr,
+    allowed_sources: HashSet<IpAddr>,
     lease: Duration,
     max_connections: usize,
     shutdown: impl Future<Output = ()>,
@@ -33,6 +39,10 @@ pub async fn serve(
             () = &mut shutdown => break StopReason::Shutdown,
             accepted = listener.accept() => {
                 let (mut client, peer) = accepted.context("failed to accept client")?;
+                if !allowed_sources.contains(&peer.ip()) {
+                    drop(client);
+                    continue;
+                }
                 let Ok(permit) = Arc::clone(&permits).try_acquire_owned() else {
                     drop(client);
                     continue;
@@ -102,7 +112,14 @@ mod tests {
     ) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
-        let task = tokio::spawn(serve(listener, guest, lease, max_connections, pending()));
+        let task = tokio::spawn(serve(
+            listener,
+            guest,
+            HashSet::from([IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)]),
+            lease,
+            max_connections,
+            pending(),
+        ));
         (address, task)
     }
 
@@ -156,5 +173,27 @@ mod tests {
 
         gateway_task.abort();
         echo_task.abort();
+    }
+
+    #[tokio::test]
+    async fn rejects_source_outside_allowlist_before_contacting_guest() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = listener.local_addr().unwrap();
+        let task = tokio::spawn(serve(
+            listener,
+            "127.0.0.1:9".parse().unwrap(),
+            HashSet::from(["127.0.0.2".parse().unwrap()]),
+            Duration::from_secs(2),
+            3,
+            pending(),
+        ));
+        let mut client = TcpStream::connect(endpoint).await.unwrap();
+        let mut byte = [0; 1];
+        let count = timeout(Duration::from_secs(1), client.read(&mut byte))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(count, 0);
+        task.abort();
     }
 }

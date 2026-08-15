@@ -1,6 +1,6 @@
 use std::{
     fs,
-    net::IpAddr,
+    net::{IpAddr, Ipv4Addr},
     path::{Path, PathBuf},
 };
 
@@ -46,6 +46,7 @@ pub struct NetworkConfig {
     pub guest_subnet: IpNet,
     pub endpoint_port_start: u16,
     pub endpoint_port_end: u16,
+    pub allowed_tailnet_sources: Vec<Ipv4Addr>,
 }
 
 impl Default for NetworkConfig {
@@ -56,6 +57,7 @@ impl Default for NetworkConfig {
             guest_subnet: "10.80.0.0/24".parse().expect("valid default guest subnet"),
             endpoint_port_start: 31_000,
             endpoint_port_end: 31_999,
+            allowed_tailnet_sources: vec!["100.64.0.2".parse().expect("valid tailnet IP")],
         }
     }
 }
@@ -150,6 +152,30 @@ impl Config {
                 "endpoint port range must be ordered and unprivileged".into(),
             ));
         }
+        if self.network.allowed_tailnet_sources.is_empty() {
+            return Err(ConfigError::Validation(
+                "network.allowed_tailnet_sources must contain at least one controller IP".into(),
+            ));
+        }
+        let mut unique_sources = std::collections::HashSet::new();
+        for source in &self.network.allowed_tailnet_sources {
+            let octets = source.octets();
+            if octets[0] != 100 || !(64..=127).contains(&octets[1]) {
+                return Err(ConfigError::Validation(format!(
+                    "allowed source {source} is outside 100.64.0.0/10"
+                )));
+            }
+            if IpAddr::V4(*source) == self.host.tailnet_address {
+                return Err(ConfigError::Validation(
+                    "the host Tailnet address cannot be an allowed controller source".into(),
+                ));
+            }
+            if !unique_sources.insert(source) {
+                return Err(ConfigError::Validation(format!(
+                    "duplicate allowed source {source}"
+                )));
+            }
+        }
         for (name, value) in [
             ("tailscale_interface", &self.network.tailscale_interface),
             ("libvirt_bridge", &self.network.libvirt_bridge),
@@ -222,6 +248,22 @@ mod tests {
     fn rejects_relative_storage() {
         let mut config = valid();
         config.storage.vm_dir = "vms".into();
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_empty_or_non_tailnet_source_allowlist() {
+        let mut config = valid();
+        config.network.allowed_tailnet_sources.clear();
+        assert!(config.validate().is_err());
+        config.network.allowed_tailnet_sources = vec!["192.0.2.1".parse().unwrap()];
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_host_as_controller_source() {
+        let mut config = valid();
+        config.network.allowed_tailnet_sources = vec!["100.64.0.1".parse().unwrap()];
         assert!(config.validate().is_err());
     }
 }

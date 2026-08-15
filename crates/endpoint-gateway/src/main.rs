@@ -1,4 +1,10 @@
-use std::{net::SocketAddr, path::PathBuf, process::ExitCode, time::Duration};
+use std::{
+    collections::HashSet,
+    net::{IpAddr, SocketAddr},
+    path::PathBuf,
+    process::ExitCode,
+    time::Duration,
+};
 
 use anyhow::{Context, bail};
 use clap::Parser;
@@ -44,6 +50,13 @@ async fn main() -> anyhow::Result<ExitCode> {
     let reason = serve(
         listener,
         cli.guest,
+        config
+            .network
+            .allowed_tailnet_sources
+            .iter()
+            .copied()
+            .map(IpAddr::V4)
+            .collect::<HashSet<_>>(),
         Duration::from_secs(cli.lease_seconds),
         cli.max_connections,
         shutdown,

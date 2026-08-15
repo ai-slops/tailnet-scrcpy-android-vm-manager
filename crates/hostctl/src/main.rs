@@ -5,6 +5,7 @@ use clap::{Parser, Subcommand};
 use manager_core::{
     adb::AdbPublicKey,
     config::Config,
+    firewall,
     preflight::{self, CheckStatus, SystemProbe},
     tailscale::{self, Enrollment, SystemTailscale},
 };
@@ -27,6 +28,10 @@ enum Command {
     Preflight,
     /// Join Tailscale with the configured auth-key file and report signing state.
     TailscaleEnroll,
+    /// Print the project-owned nftables endpoint policy.
+    FirewallPrint,
+    /// Atomically install or replace the project-owned nftables endpoint policy.
+    FirewallApply,
     /// Validate an ADB public key and print its stable fingerprint.
     AdbFingerprint {
         /// File containing one Android ADB public-key line.
@@ -71,6 +76,19 @@ fn main() -> anyhow::Result<ExitCode> {
                     );
                 }
             }
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::FirewallPrint => {
+            let config = Config::load(&cli.config)
+                .with_context(|| format!("failed to load {}", cli.config.display()))?;
+            print!("{}", firewall::render(&config, false));
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::FirewallApply => {
+            let config = Config::load(&cli.config)
+                .with_context(|| format!("failed to load {}", cli.config.display()))?;
+            firewall::apply(&config)?;
+            println!("Installed nftables Tailnet endpoint allowlist.");
             Ok(ExitCode::SUCCESS)
         }
         Command::AdbFingerprint { public_key } => {

@@ -3,5 +3,6 @@
 pub mod adb;
 pub mod config;
 pub mod endpoint;
+pub mod firewall;
 pub mod preflight;
 pub mod tailscale;
