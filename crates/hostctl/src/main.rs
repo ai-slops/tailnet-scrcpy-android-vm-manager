@@ -1,10 +1,11 @@
-use std::{fs, path::PathBuf, process::ExitCode};
+use std::{fs, path::PathBuf, process::ExitCode, time::Duration};
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use manager_core::{
     adb::AdbPublicKey,
     config::Config,
+    lifecycle::{self, SystemVirsh},
     preflight::{self, CheckStatus, SystemProbe},
     router_vm,
 };
@@ -27,10 +28,40 @@ enum Command {
     Preflight,
     /// Print the dedicated Tailnet router VM libvirt domain XML.
     RouterDomainXml,
+    /// Operate a configured persistent Android VM.
+    Vm {
+        #[command(subcommand)]
+        command: VmCommand,
+    },
     /// Validate an ADB public key and print its stable fingerprint.
     AdbFingerprint {
         /// File containing one Android ADB public-key line.
         public_key: PathBuf,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum VmCommand {
+    Status {
+        name: String,
+    },
+    Start {
+        name: String,
+        /// Wait for TCP 5555 readiness after starting; zero disables the wait.
+        #[arg(long, default_value_t = 0)]
+        wait_ready_seconds: u64,
+    },
+    Stop {
+        name: String,
+        #[arg(long, default_value_t = 30)]
+        timeout_seconds: u64,
+        /// Force power-off only if graceful shutdown exceeds the timeout.
+        #[arg(long, default_value_t = false)]
+        force_after_timeout: bool,
+    },
+    /// Save RAM state to SSD through libvirt managed save and power off.
+    Hibernate {
+        name: String,
     },
 }
 
@@ -59,6 +90,47 @@ fn main() -> anyhow::Result<ExitCode> {
             let config = Config::load(&cli.config)
                 .with_context(|| format!("failed to load {}", cli.config.display()))?;
             print!("{}", router_vm::domain_xml(&config));
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::Vm { command } => {
+            let config = Config::load(&cli.config)
+                .with_context(|| format!("failed to load {}", cli.config.display()))?;
+            match command {
+                VmCommand::Status { name } => {
+                    let vm = lifecycle::find_vm(&config, &name)?;
+                    println!("{:?}", lifecycle::state(&SystemVirsh, vm)?);
+                }
+                VmCommand::Start {
+                    name,
+                    wait_ready_seconds,
+                } => {
+                    let vm = lifecycle::find_vm(&config, &name)?;
+                    lifecycle::start(&SystemVirsh, vm)?;
+                    if wait_ready_seconds > 0 {
+                        lifecycle::wait_for_adb(vm, Duration::from_secs(wait_ready_seconds))?;
+                    }
+                    println!("Running");
+                }
+                VmCommand::Stop {
+                    name,
+                    timeout_seconds,
+                    force_after_timeout,
+                } => {
+                    let vm = lifecycle::find_vm(&config, &name)?;
+                    lifecycle::stop(
+                        &SystemVirsh,
+                        vm,
+                        Duration::from_secs(timeout_seconds),
+                        force_after_timeout,
+                    )?;
+                    println!("Stopped");
+                }
+                VmCommand::Hibernate { name } => {
+                    let vm = lifecycle::find_vm(&config, &name)?;
+                    lifecycle::hibernate(&SystemVirsh, vm)?;
+                    println!("Hibernated");
+                }
+            }
             Ok(ExitCode::SUCCESS)
         }
         Command::AdbFingerprint { public_key } => {
