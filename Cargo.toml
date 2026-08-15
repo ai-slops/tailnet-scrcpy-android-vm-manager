@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/manager-core", "crates/hostctl", "crates/routerctl", "crates/endpoint-gateway"]
+members = ["crates/manager-core", "crates/hostctl", "crates/routerctl"]
 resolver = "2"
 
 [workspace.package]

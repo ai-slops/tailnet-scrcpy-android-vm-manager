@@ -22,7 +22,7 @@ The system must provide:
 - A lost or stolen authorized iOS device
 - A malicious or compromised Android guest
 - Malformed Manager API input
-- Stale firewall rules or endpoint processes after a crash
+- Stale router mappings after a crash
 - Theft of VM disk files or database backups
 
 ### Out of scope for the MVP
@@ -72,7 +72,7 @@ Under the assumed Tailscale control-plane compromise:
   Tailnet Lock signature;
 - Grants and Tailscale-supplied identity metadata are not sufficient evidence
   of VM authorization;
-- local firewall rules expose only the bounded Manager and endpoint surface;
+- router-local firewall rules expose only mapped Android TCP 5555 endpoints;
 - an ADB session still requires a locally registered public key; and
 - the local permission database, not the Tailscale control plane, decides which
   key may control which VM.
@@ -98,7 +98,8 @@ but lower-trust node benefits from a maliciously widened packet filter.
 - Record and confirm the public-key fingerprint during enrollment.
 - Never upload or back up client private keys to the Manager.
 - Store only public material in the Manager database.
-- Remove revoked keys from guest authorization and terminate matching leases.
+- Remove revoked keys from guest authorization and terminate matching ADB
+  sessions.
 - Confirm the exact Scrcpy Remote import/export key format during the
   compatibility spike.
 
@@ -110,12 +111,12 @@ Scrcpy Remote data path unless the application explicitly supports it.
 
 ## 6. Firewall invariants
 
-The router VM and host firewall must preserve these invariants even when
-Tailscale Grants are overly permissive:
+The router appliance and isolated host network must preserve these invariants
+even when Tailscale Grants are overly permissive:
 
 ```text
 public/LAN -> management ports       DENY
-public/LAN -> endpoint port range    DENY
+public/LAN -> Android guest subnet   DENY
 router tailscale0 -> VM subnet       DENY by default
 mapped controller -> selected ADB    ALLOW while authorized
 VM -> host management plane          DENY
@@ -131,8 +132,8 @@ destinations. No wildcard DNAT from the tailnet to the guest network is allowed.
 Revocation of an iOS control device is complete only after all of the following:
 
 1. mark the device `revoked` in the local database;
-2. reject creation or renewal of its endpoint leases;
-3. terminate its active endpoint connections;
+2. remove every router source-to-guest mapping for the device;
+3. terminate its active ADB connections;
 4. remove its ADB public key from every authorized guest;
 5. remove the device from the tailnet and revoke its Tailnet Lock key; and
 6. append an immutable audit event.
@@ -140,11 +141,10 @@ Revocation of an iOS control device is complete only after all of the following:
 Local ADB revocation and Tailnet Lock revocation are intentionally independent.
 Either boundary should block useful VM control.
 
-The host additionally limits endpoint traffic to configured controller
-Tailscale IPv4 addresses in both nftables and the endpoint gateway. This is a
-defense-in-depth operational restriction, not an independent identity proof:
-without Tailnet Lock, a compromised Tailscale control plane could change the
-node-key-to-IP mapping supplied to the host.
+The router additionally limits traffic to configured controller Tailscale IPv4
+addresses in nftables. This is a defense-in-depth operational restriction, not
+an independent identity proof: without Tailnet Lock, a compromised Tailscale
+control plane could change the node-key-to-IP mapping supplied to the router.
 
 ## 8. Sensitive data
 
@@ -168,7 +168,7 @@ At minimum, record:
 - ADB fingerprint changes;
 - permission grants and removals;
 - VM creation, reset, snapshot, and deletion;
-- endpoint lease creation, expiry, and forced termination;
+- router mapping changes and forced ADB-session termination;
 - host-agent reconciliation changes; and
 - security check failures.
 

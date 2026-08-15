@@ -1,8 +1,15 @@
 # Development Host Setup
 
-The compatibility spike requires QEMU/KVM and uses rootless Podman for
-reproducible host-side tooling. Production packaging may later remove the
-container-engine dependency.
+Host development requires QEMU/KVM and libvirt. Rootless Podman is used only by
+the host smoke test. Docker Compose is used only by the disposable local
+Headscale network integration test; neither engine is part of the production
+router or Android VM data path.
+
+Rust 1.97, Zig 0.15, and just are the core development tools. Mise is an
+optional way to install the pinned versions from `mise.toml`; it is not required
+to run any recipe. A standalone toolchain works because the `justfile` and
+Cargo linker wrapper default their caches to `.local/`. Java 21 is needed only
+for the optional Android Emulator spike.
 
 ## Ubuntu packages
 
@@ -51,9 +58,10 @@ For a temporary shell, newgrp kvm is sufficient for the KVM smoke test. Running
 newgrp commands sequentially does not reliably preserve both nested group
 contexts, so prefer logging out and back in.
 
-Docker is not required by the project. If it is used as a temporary fallback,
-its docker group effectively grants root-equivalent control of the daemon and
-must not be treated as equivalent to rootless Podman.
+Docker is optional unless running the local Headscale integration test. Its
+`docker` group effectively grants root-equivalent control of the daemon and
+must not be treated as equivalent to rootless Podman. See
+[Local Network Integration Test](integration-testing.md).
 
 ## Rootless prerequisites
 
@@ -72,7 +80,7 @@ package provides newuidmap and newgidmap.
 After starting a fresh login session:
 
 ~~~shell
-sh scripts/host-smoke.sh
+just host-smoke
 ~~~
 
 The script proves that QEMU can initialize KVM, rather than merely checking that
@@ -81,17 +89,16 @@ The script proves that QEMU can initialize KVM, rather than merely checking that
 Then run the project-specific checks:
 
 ~~~shell
-cargo run -p hostctl -- \
-  --config .local/spike/config.toml \
-  preflight
+just preflight .local/spike/config.toml
 ~~~
 
 The hostctl check additionally validates QEMU, libvirt, nftables, cgroup v2,
 and current-process KVM device access. It deliberately does not require
 Tailscale on the KVM host.
 
-Before this check can pass on a deployment host, enroll and manually sign the
-host and install the controller source-IP allowlist as described in
+This check deliberately does not inspect Tailnet Lock or router policy because
+the KVM host is not a tailnet node. Run `routerctl preflight` inside the router
+appliance after enrollment and manual signing, as described in
 [Tailscale Provisioning](tailscale-provisioning.md).
 
 ## Optional Android Emulator spike
@@ -105,13 +112,13 @@ The bootstrap script pins the command-line tools archive and verifies its
 published SHA-256 checksum. Run each step explicitly:
 
 ~~~shell
-sh scripts/android-spike-sdk.sh prepare
-sh scripts/android-spike-sdk.sh licenses
-sh scripts/android-spike-sdk.sh install
-sh scripts/android-spike-sdk.sh create
+just android-spike prepare
+just android-spike licenses
+just android-spike install
+just android-spike create
 newgrp kvm
-sh scripts/android-spike-sdk.sh check
-sh scripts/android-spike-sdk.sh start
+just android-spike check
+just android-spike start
 ~~~
 
 The licenses step displays Google's Android SDK terms and requires the operator

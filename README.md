@@ -7,8 +7,9 @@ iOS app.
 The project is designed around a deliberately narrow trust model:
 
 - Android guests do not run Tailscale.
-- Only a dedicated Tailnet router VM joins the tailnet; the KVM host and
-  Android guests do not run Tailscale.
+- Only a dedicated Tailnet router appliance joins the tailnet; the current
+  implementation uses an isolated VM. The KVM host and Android guests do not
+  run Tailscale.
 - Tailnet Lock controls which physical devices may join that tailnet.
 - The Tailscale control plane is not trusted to authorize access by itself.
 - Android Debug Bridge (ADB) public-key authentication provides an independent
@@ -18,6 +19,22 @@ The project is designed around a deliberately narrow trust model:
 
 The initial release targets a single x86-64 Ubuntu LTS host with KVM, QEMU,
 libvirt, nftables, persistent qcow2 guests, and AOSP images.
+
+## Development commands
+
+With `cargo`, Zig, and `just` on `PATH`, use the repository recipes:
+
+~~~shell
+just check
+just headscale-test
+just preflight .local/spike/config.toml
+just --list
+~~~
+
+Mise is optional; `mise install` provides the pinned tool versions when it is
+available. The recipes and Cargo linker wrapper work without mise and keep Zig
+caches below the ignored `.local/` directory. Individual shell files remain
+directly runnable with `sh scripts/...` when a recipe is not appropriate.
 
 ## Documentation
 
@@ -34,6 +51,13 @@ libvirt, nftables, persistent qcow2 guests, and AOSP images.
 
 ## Project status
 
-This repository is currently in the design phase. The first implementation task
-is a compatibility spike against the current Scrcpy Remote iOS release. No
-production-ready service exists yet.
+This is a pre-MVP implementation, not a production-ready service. Implemented
+and tested foundations include validated configuration, router enrollment and
+fail-closed source allowlisting, a generated isolated router VM definition,
+persistent VM lifecycle with SSD-backed hibernation, stopped-state snapshots,
+ADB public-key validation, and a local Headscale routing integration test.
+
+The physical Scrcpy Remote/iOS compatibility spike, Android image lifecycle,
+ADB-key synchronization, local authorization database, reconciliation service,
+and production packaging remain incomplete. See the [MVP plan](docs/mvp-plan.md)
+for the remaining work.

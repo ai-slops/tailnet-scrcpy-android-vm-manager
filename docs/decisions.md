@@ -9,7 +9,8 @@ replacement rationale.
 ### ADR-001: Use a dedicated Tailnet Lock-enabled tailnet
 
 **Decision:** The deployment uses a dedicated Tailscale Personal tailnet. Only
-the KVM host, approved control devices, and signing devices join it.
+the isolated router appliance, approved control devices, and signing devices
+join it. The KVM host does not join.
 
 **Rationale:** Tailnet Lock keeps node-key admission under operator-controlled
 cryptographic authority even if Tailscale's control plane is compromised. A
@@ -46,13 +47,16 @@ Tailscale and is enforced by the Android endpoint.
 **Consequence:** A controller has broad ADB authority inside an authorized VM;
 the project cannot claim scrcpy-only access.
 
-### ADR-005: Expose per-VM leased endpoints on the host
+### ADR-005: Route explicit Android `/32` endpoints directly
 
-**Decision:** A running, authorized VM receives a temporary port on the host's
-Tailscale address. That port forwards only to the VM's private ADB endpoint.
+**Decision:** The isolated router advertises each configured Android VM's
+persistent `/32`. Scrcpy Remote connects to that address on TCP 5555. The KVM
+host exposes no tailnet listener and allocates no proxy port.
 
-**Rationale:** The iOS app can use a conventional host and port while guests
-remain isolated and unmodified by Tailscale.
+**Rationale:** Direct routing matches the iOS client's supported Tailscale path,
+keeps the KVM host outside the tailnet, and removes a per-session proxy and port
+allocation subsystem. Router-local source allowlisting and Android ADB keys
+retain the two independent authorization checks.
 
 ### ADR-006: Use persistent qcow2 overlays
 
@@ -80,7 +84,7 @@ root command execution.
 
 ### ADR-009: Use SQLite for the single-host MVP
 
-**Decision:** Desired state, authorization, leases, and audit metadata use
+**Decision:** Desired state, authorization, and audit metadata use
 SQLite in WAL mode.
 
 **Rationale:** A single-host deployment does not justify a separate database
@@ -99,21 +103,15 @@ remote ADB server.
 Validate key generation, import/export encoding, fingerprint extraction,
 persistence across app upgrades, and behavior when Android rejects a key.
 
-### ADR-P03: Endpoint implementation
-
-Choose between a dedicated TCP proxy and nftables DNAT after measuring whether
-each option can reliably enforce lease expiry, connection termination, port
-ownership, and observability.
-
-### ADR-P04: Guest ADB key synchronization
+### ADR-P03: Guest ADB key synchronization
 
 Choose between offline disk injection, a QEMU guest agent path, an authenticated
 bootstrap channel, or controlled adbd configuration. The selected mechanism
 must support immediate revocation without exposing a general host-to-guest
 shell surface.
 
-### ADR-P05: Manager interaction from iOS
+### ADR-P04: Manager interaction from iOS
 
-Determine how the operator discovers the per-VM endpoint and enters it into
-Scrcpy Remote. Manual copy is acceptable initially; deep links or automation
-must be based on documented app behavior before adoption.
+Determine how the operator discovers the persistent Android `/32` and enters it
+into Scrcpy Remote. Manual copy is acceptable initially; deep links or
+automation must be based on documented app behavior before adoption.

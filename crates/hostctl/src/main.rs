@@ -83,9 +83,9 @@ fn main() -> anyhow::Result<ExitCode> {
 
     match cli.command {
         Command::Preflight => {
-            let config = Config::load(&cli.config)
+            Config::load(&cli.config)
                 .with_context(|| format!("failed to load {}", cli.config.display()))?;
-            let results = preflight::run(&config, &SystemProbe);
+            let results = preflight::run(&SystemProbe);
             for result in &results {
                 let label = match result.status {
                     CheckStatus::Pass => "PASS",

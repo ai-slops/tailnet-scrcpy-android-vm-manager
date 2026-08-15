@@ -37,12 +37,12 @@ The MVP must:
 3. create, start, stop, reboot, reset, and delete persistent Android VMs;
 4. create each VM from an immutable AOSP base image and a qcow2 overlay;
 5. place guests on an isolated libvirt network;
-6. expose a separately allocated TCP endpoint for each running VM on the host's
-   Tailscale address;
-7. forward that endpoint only to the selected guest's authenticated ADB daemon;
+6. advertise only configured Android VM `/32` routes from the isolated router;
+7. forward TCP 5555 only from an allowed controller address to its selected
+   guest's authenticated ADB daemon;
 8. register, authorize, and revoke a distinct ADB public key per client device;
 9. apply device-to-VM `controller` permissions from a host-local database;
-10. reconcile firewall rules, endpoint leases, and VM state after restart;
+10. reconcile router mappings, ADB authorization, and VM state after restart;
 11. record security-sensitive operations in an audit log; and
 12. demonstrate screen display and input control from Scrcpy Remote on a current
     supported iOS/iPadOS version.
@@ -80,14 +80,16 @@ guest-accessible data, and changing the guest configuration.
 - Inter-VM networking: denied
 - GPU passthrough: unsupported in the MVP
 - Running-state snapshots: unsupported in the MVP
-- Stopped-state snapshots: deferred until core lifecycle behavior is stable
+- Stopped-state snapshots: supported through explicit create, list, revert, and
+  delete operations
 
 ## 6. Session policy
 
-- A VM has at most one active controller endpoint lease.
-- A lease has an explicit expiry and can be revoked immediately.
-- Revoking a device closes its active endpoint leases and removes its ADB key
-  authorization from affected guests.
+- A VM has at most one active controller in the MVP.
+- Network mappings are persistent configuration; VM power changes do not cause
+  route approval churn.
+- Revoking a device removes its router mapping and ADB key authorization, and
+  must terminate an established ADB session rather than only blocking reconnect.
 - Disconnecting Scrcpy Remote does not stop the VM.
 - Clipboard synchronization, file transfer, audio capture, and microphone
   forwarding are disabled unless explicitly validated and enabled later.

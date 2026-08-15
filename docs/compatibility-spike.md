@@ -26,21 +26,18 @@ Export the ADB public key from Scrcpy Remote. Never copy its private key to the
 host or repository.
 
 ~~~shell
-cargo run -p hostctl -- \
-  adb-fingerprint /path/to/ios-device.adb.pub
+just adb-fingerprint /path/to/ios-device.adb.pub
 ~~~
 
 Record the fingerprint. The command rejects private-key material, multiline
 input, malformed base64, and unexpected key sizes. Install only this public key
-in the test VM using the image-specific bootstrap mechanism. ADR-P04 remains
+in the test VM using the image-specific bootstrap mechanism. ADR-P03 remains
 open until that mechanism is selected.
 
 ## 3. Check the host
 
 ~~~shell
-cargo run -p hostctl -- \
-  --config .local/spike/config.toml \
-  preflight
+just preflight .local/spike/config.toml
 ~~~
 
 Every check must pass on the actual KVM host. Keep local configuration and test
@@ -71,17 +68,19 @@ keyboard, reconnect behavior, and observed scrcpy versions.
 2. Restore the approved key. Connection must succeed.
 3. Remove the approved key while connected and restart adbd using the
    image-specific control path. The active or next connection must fail.
-4. Stop the gateway. Its endpoint must close immediately.
-5. Let a short lease expire while connected. The connection must close.
-6. Try an out-of-range listen port, a guest outside the configured subnet, and a
-   non-5555 destination. Startup must fail before accepting traffic.
+4. Remove the controller mapping and reapply router policy. The established
+   connection must stop carrying traffic immediately.
+5. Restore the mapping. A new authenticated connection must succeed.
+6. Try a controller source outside `100.64.0.0/10`, a guest outside the
+   configured subnet, an uninventoried guest, and a non-5555 destination. The
+   configuration or router policy must reject each case.
 
 ## 7. Record the result
 
 Store non-secret results under docs/spikes/ in a dated Markdown file. Do not
 commit private keys, auth keys, VM disks, or payload packet captures.
 
-The result must resolve or refine ADR-P01 through ADR-P05. Failure of arbitrary
-port support, stable per-device ADB keys, independent key rejection, or
-revocation is an architecture blocker. It must not be bypassed by exposing
+The result must resolve or refine ADR-P01 through ADR-P04. Failure of direct
+routed-address support, stable per-device ADB keys, independent key rejection,
+or revocation is an architecture blocker. It must not be bypassed by exposing
 unauthenticated ADB.

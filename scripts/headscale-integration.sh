@@ -80,7 +80,7 @@ config="$project_dir/config.toml"
   printf 'tailscale_interface = "tailscale0"\n'
   printf 'guest_interface = "eth1"\n'
   printf 'lan_address = "10.80.0.3"\n'
-  printf 'require_tailnet_lock = true\n\n'
+  printf '\n'
   printf '[[router.access]]\nsource = "%s"\nguest = "10.80.0.2"\n\n' "$controller_ip"
   printf '[[android_vms]]\nname = "integration-android"\naddress = "10.80.0.2"\n\n'
   printf '[network]\nlibvirt_bridge = "vmbr-android"\nguest_subnet = "10.80.0.0/24"\n'

@@ -2,7 +2,6 @@
 
 pub mod adb;
 pub mod config;
-pub mod endpoint;
 pub mod firewall;
 pub mod lifecycle;
 pub mod preflight;

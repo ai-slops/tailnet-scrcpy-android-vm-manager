@@ -13,8 +13,18 @@ command -v qemu-system-x86_64 >/dev/null 2>&1 ||
   fail "/dev/kvm is not accessible; start a new login session or run: newgrp kvm"
 
 qmp_output="$(
-  printf '%s\n'     '{"execute":"qmp_capabilities"}'     '{"execute":"query-kvm"}'     '{"execute":"quit"}' |
-    qemu-system-x86_64       -accel kvm       -cpu host       -m 64M       -display none       -nodefaults       -S       -qmp stdio
+  printf '%s\n' \
+    '{"execute":"qmp_capabilities"}' \
+    '{"execute":"query-kvm"}' \
+    '{"execute":"quit"}' |
+    qemu-system-x86_64 \
+      -accel kvm \
+      -cpu host \
+      -m 64M \
+      -display none \
+      -nodefaults \
+      -S \
+      -qmp stdio
 )"
 
 printf '%s\n' "$qmp_output" | grep -Eq '"enabled"[[:space:]]*:[[:space:]]*true' ||

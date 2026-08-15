@@ -22,14 +22,14 @@ network.
 Run it from the repository root:
 
 ~~~shell
-sh scripts/headscale-integration.sh
+just headscale-test
 ~~~
 
 The current shell must be able to access the Docker daemon. If Docker group
 membership was added after login, either start a new login session or run:
 
 ~~~shell
-sg docker -c 'sh scripts/headscale-integration.sh'
+sg docker -c 'just headscale-test'
 ~~~
 
 The test requires Docker Compose, `/dev/net/tun`, and permission to create

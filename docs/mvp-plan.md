@@ -15,9 +15,10 @@ Deliverables:
 - proof that an accepted key connects and a rejected key does not;
 - proof of key revocation and reconnection behavior;
 - confirmation of compatible scrcpy server version and options; and
-- a decision for ADR-P01 through ADR-P05 where the spike provides evidence.
+- a decision for ADR-P01 through ADR-P04 where the spike provides evidence.
 
-No broad application implementation should precede this spike.
+The repository may build bounded host and router primitives in parallel, but a
+production service release remains blocked on this physical-client spike.
 
 ## Phase 1: Host foundation
 
@@ -67,19 +68,20 @@ Exit criteria:
 - the same key cannot access an unassigned VM; and
 - revocation terminates existing access and blocks reconnection.
 
-## Phase 4: Leased remote endpoints
+## Phase 4: Routed remote access
 
-- Allocate collision-free ports from a configured range.
-- Advertise only enabled Android VM `/32` routes from the isolated router VM.
+- Advertise only inventoried Android VM `/32` routes from the isolated router
+  appliance.
 - Forward only mapped controller sources to one VM ADB address.
-- Enforce expiry, connection limits, and immediate teardown.
+- Reconcile source mappings and support immediate revocation of established ADB
+  access.
 - Restore or remove state safely during reconciliation.
 
 Exit criteria:
 
-- LAN and public interfaces cannot reach endpoint ports;
+- the KVM host exposes no tailnet endpoint ports;
 - arbitrary tailnet forwarding to the guest subnet remains impossible;
-- stale endpoints do not survive reconciliation; and
+- stale router mappings do not survive reconciliation; and
 - Scrcpy Remote can control the selected VM end to end.
 
 ## Phase 5: Operational hardening
@@ -96,13 +98,13 @@ Exit criteria:
 
 The MVP requires:
 
-- unit tests for state transitions, permission decisions, lease allocation, and
+- unit tests for state transitions, permission decisions, route mappings, and
   configuration validation;
 - integration tests against libvirt, nftables, and a disposable Android VM;
 - negative network tests from LAN, unauthorized tailnet nodes, and other guests;
 - a disposable local Headscale test for enrollment, `/32` route approval, and
   controller source-IP allowlisting (without Tailnet Lock coverage);
-- crash-recovery tests for API, agent, gateway, and host restarts;
+- crash-recovery tests for API, agent, router, and host restarts;
 - revocation tests with an established ADB connection; and
 - a manual iOS compatibility suite for every supported Scrcpy Remote update.
 

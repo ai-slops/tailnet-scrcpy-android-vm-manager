@@ -1,3 +1,10 @@
 #!/bin/sh
 set -eu
+
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+: "${ZIG_LOCAL_CACHE_DIR:=$root/.local/cache/zig}"
+: "${ZIG_GLOBAL_CACHE_DIR:=$root/.local/cache/zig-global}"
+export ZIG_LOCAL_CACHE_DIR ZIG_GLOBAL_CACHE_DIR
+mkdir -p "$ZIG_LOCAL_CACHE_DIR" "$ZIG_GLOBAL_CACHE_DIR"
+
 exec zig cc "$@"

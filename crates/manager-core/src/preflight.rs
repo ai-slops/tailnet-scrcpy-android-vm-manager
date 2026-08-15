@@ -1,7 +1,5 @@
 use std::{fs::OpenOptions, path::Path, process::Command};
 
-use crate::config::Config;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CheckStatus {
     Pass,
@@ -26,8 +24,6 @@ pub trait HostProbe {
     fn path_exists(&self, path: &Path) -> bool;
     fn path_read_write(&self, path: &Path) -> bool;
     fn command_succeeds(&self, program: &str, args: &[&str]) -> bool;
-    fn interface_has_address(&self, interface: &str, address: &str) -> bool;
-    fn command_output(&self, program: &str, args: &[&str]) -> Option<String>;
 }
 
 pub struct SystemProbe;
@@ -47,38 +43,17 @@ impl HostProbe for SystemProbe {
             .status()
             .is_ok_and(|status| status.success())
     }
-
-    fn interface_has_address(&self, interface: &str, address: &str) -> bool {
-        Command::new("ip")
-            .args(["-brief", "address", "show", "dev", interface])
-            .output()
-            .is_ok_and(|output| {
-                output.status.success()
-                    && String::from_utf8_lossy(&output.stdout)
-                        .split_ascii_whitespace()
-                        .any(|field| field.split('/').next() == Some(address))
-            })
-    }
-
-    fn command_output(&self, program: &str, args: &[&str]) -> Option<String> {
-        let output = Command::new(program).args(args).output().ok()?;
-        let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
-        text.push_str(&String::from_utf8_lossy(&output.stderr));
-        output.status.success().then_some(text)
-    }
 }
 
 #[must_use]
-pub fn run(config: &Config, probe: &impl HostProbe) -> Vec<CheckResult> {
-    let results = vec![
+pub fn run(probe: &impl HostProbe) -> Vec<CheckResult> {
+    vec![
         kvm_check(probe),
         command_check(probe, "qemu", "qemu-system-x86_64", &["--version"]),
         command_check(probe, "libvirt", "virsh", &["--version"]),
         command_check(probe, "nftables", "nft", &["--version"]),
         path_check(probe, "cgroup-v2", "/sys/fs/cgroup/cgroup.controllers"),
-    ];
-    let _ = config;
-    results
+    ]
 }
 
 fn kvm_check(probe: &impl HostProbe) -> CheckResult {
@@ -158,12 +133,6 @@ mod tests {
         fn command_succeeds(&self, _program: &str, _args: &[&str]) -> bool {
             false
         }
-        fn interface_has_address(&self, _interface: &str, _address: &str) -> bool {
-            false
-        }
-        fn command_output(&self, _program: &str, _args: &[&str]) -> Option<String> {
-            None
-        }
     }
 
     struct InaccessibleKvmProbe;
@@ -178,12 +147,6 @@ mod tests {
         fn command_succeeds(&self, _program: &str, _args: &[&str]) -> bool {
             false
         }
-        fn interface_has_address(&self, _interface: &str, _address: &str) -> bool {
-            false
-        }
-        fn command_output(&self, _program: &str, _args: &[&str]) -> Option<String> {
-            None
-        }
     }
 
     #[test]
@@ -195,8 +158,7 @@ mod tests {
 
     #[test]
     fn reports_missing_dependencies() {
-        let config = crate::config::tests::valid();
-        let results = run(&config, &MissingProbe);
+        let results = run(&MissingProbe);
         assert!(results.iter().all(|result| !result.passed()));
         assert!(results.iter().any(|result| result.name == "qemu"));
     }

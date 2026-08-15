@@ -22,7 +22,7 @@ pub fn render(config: &Config, replace: bool) -> String {
     } else {
         String::new()
     };
-    rules.push_str(&format!("table {FAMILY} {TABLE} {{\n\tchain forward {{\n\t\ttype filter hook forward priority filter; policy accept;\n"));
+    rules.push_str(&format!("table {FAMILY} {TABLE} {{\n\tchain forward {{\n\t\ttype filter hook forward priority filter; policy drop;\n"));
     for access in &config.router.access {
         rules.push_str(&format!(
             "\t\tiifname \"{}\" oifname \"{}\" ip saddr {} ip daddr {} tcp dport 5555 accept\n",
@@ -81,6 +81,7 @@ mod tests {
         let c = crate::config::tests::valid();
         let r = render(&c, false);
         assert!(r.contains("ip saddr 100.64.0.2 ip daddr 10.80.0.2 tcp dport 5555 accept"));
+        assert!(r.contains("type filter hook forward priority filter; policy drop;"));
         assert!(r.contains("ip daddr 10.80.0.0/24 drop"));
         assert!(r.contains("ip saddr 10.80.0.0/24 ct state established,related accept"));
         assert!(r.contains("oifname \"tailscale0\" ip saddr 10.80.0.0/24 drop"));

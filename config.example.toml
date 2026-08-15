@@ -5,7 +5,6 @@ auth_key_file = "/etc/tailnet-android-vm-manager/secrets/tailscale-authkey"
 tailscale_interface = "tailscale0"
 guest_interface = "ens3"
 lan_address = "10.80.0.1"
-require_tailnet_lock = true
 
 [[router.access]]
 source = "100.64.0.2"
@@ -18,8 +17,6 @@ address = "10.80.0.2"
 [network]
 libvirt_bridge = "vmbr-android"
 guest_subnet = "10.80.0.0/24"
-endpoint_port_start = 31000
-endpoint_port_end = 31999
 
 [storage]
 state_dir = "/var/lib/tailnet-android-vm-manager"

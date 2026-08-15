@@ -35,8 +35,6 @@ pub struct RouterConfig {
     pub tailscale_interface: String,
     pub guest_interface: String,
     pub lan_address: Ipv4Addr,
-    #[serde(default = "default_require_tailnet_lock")]
-    pub require_tailnet_lock: bool,
     pub access: Vec<RouterAccess>,
 }
 
@@ -50,17 +48,11 @@ pub struct RouterAccess {
 fn default_tailscale_interface() -> String {
     "tailscale0".into()
 }
-const fn default_require_tailnet_lock() -> bool {
-    true
-}
-
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub struct NetworkConfig {
     pub libvirt_bridge: String,
     pub guest_subnet: IpNet,
-    pub endpoint_port_start: u16,
-    pub endpoint_port_end: u16,
 }
 
 impl Default for NetworkConfig {
@@ -68,8 +60,6 @@ impl Default for NetworkConfig {
         Self {
             libvirt_bridge: "vmbr-android".into(),
             guest_subnet: "10.80.0.0/24".parse().expect("valid default guest subnet"),
-            endpoint_port_start: 31_000,
-            endpoint_port_end: 31_999,
         }
     }
 }
@@ -155,13 +145,6 @@ impl Config {
         {
             return Err(ConfigError::Validation(
                 "router.lan_address must be inside network.guest_subnet".into(),
-            ));
-        }
-        if self.network.endpoint_port_start < 1024
-            || self.network.endpoint_port_start > self.network.endpoint_port_end
-        {
-            return Err(ConfigError::Validation(
-                "endpoint port range must be ordered and unprivileged".into(),
             ));
         }
         if self.router.access.is_empty() {
@@ -277,7 +260,6 @@ pub(crate) mod tests {
                 tailscale_interface: "tailscale0".into(),
                 guest_interface: "ens3".into(),
                 lan_address: "10.80.0.1".parse().unwrap(),
-                require_tailnet_lock: true,
                 access: vec![RouterAccess {
                     source: "100.64.0.2".parse().unwrap(),
                     guest: "10.80.0.2".parse().unwrap(),

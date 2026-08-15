@@ -176,7 +176,6 @@ mod tests {
                 tailscale_interface: "tailscale0".into(),
                 guest_interface: "ens3".into(),
                 lan_address: "10.80.0.1".parse().unwrap(),
-                require_tailnet_lock: true,
                 access: vec![RouterAccess {
                     source: "100.64.0.2".parse().unwrap(),
                     guest: "10.80.0.2".parse().unwrap(),
