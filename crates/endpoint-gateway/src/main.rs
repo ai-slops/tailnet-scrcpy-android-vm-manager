@@ -90,7 +90,9 @@ fn validate(config: &Config, cli: &Cli) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use manager_core::config::{NetworkConfig, RouterAccess, RouterConfig, StorageConfig};
+    use manager_core::config::{
+        AndroidVmConfig, NetworkConfig, RouterAccess, RouterConfig, StorageConfig,
+    };
 
     use super::*;
 
@@ -108,6 +110,10 @@ mod tests {
                     guest: "10.80.0.2".parse().unwrap(),
                 }],
             },
+            android_vms: vec![AndroidVmConfig {
+                name: "android-game-01".into(),
+                address: "10.80.0.2".parse().unwrap(),
+            }],
             network: NetworkConfig::default(),
             storage: StorageConfig::default(),
         }

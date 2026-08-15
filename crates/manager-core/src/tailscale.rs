@@ -142,7 +142,9 @@ fn output_text(output: &Output) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{NetworkConfig, RouterAccess, RouterConfig, StorageConfig};
+    use crate::config::{
+        AndroidVmConfig, NetworkConfig, RouterAccess, RouterConfig, StorageConfig,
+    };
     use std::{
         collections::VecDeque,
         fs::Permissions,
@@ -180,6 +182,10 @@ mod tests {
                     guest: "10.80.0.2".parse().unwrap(),
                 }],
             },
+            android_vms: vec![AndroidVmConfig {
+                name: "android-game-01".into(),
+                address: "10.80.0.2".parse().unwrap(),
+            }],
             network: NetworkConfig::default(),
             storage: StorageConfig::default(),
         }

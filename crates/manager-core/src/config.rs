@@ -12,10 +12,18 @@ use thiserror::Error;
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub router: RouterConfig,
+    pub android_vms: Vec<AndroidVmConfig>,
     #[serde(default)]
     pub network: NetworkConfig,
     #[serde(default)]
     pub storage: StorageConfig,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct AndroidVmConfig {
+    pub name: String,
+    pub address: Ipv4Addr,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -161,6 +169,32 @@ impl Config {
                 "router.access must contain at least one controller-to-guest mapping".into(),
             ));
         }
+        if self.android_vms.is_empty() {
+            return Err(ConfigError::Validation(
+                "android_vms must contain at least one persistent VM".into(),
+            ));
+        }
+        let mut vm_names = std::collections::HashSet::new();
+        let mut vm_addresses = std::collections::HashSet::new();
+        for vm in &self.android_vms {
+            if !valid_identifier(&vm.name) {
+                return Err(ConfigError::Validation(format!(
+                    "Android VM name {} is invalid",
+                    vm.name
+                )));
+            }
+            if !self.network.guest_subnet.contains(&IpAddr::V4(vm.address)) {
+                return Err(ConfigError::Validation(format!(
+                    "Android VM {} address {} is outside network.guest_subnet",
+                    vm.name, vm.address
+                )));
+            }
+            if !vm_names.insert(&vm.name) || !vm_addresses.insert(vm.address) {
+                return Err(ConfigError::Validation(
+                    "Android VM names and addresses must be unique".into(),
+                ));
+            }
+        }
         let mut mappings = std::collections::HashSet::new();
         for access in &self.router.access {
             let octets = access.source.octets();
@@ -177,6 +211,12 @@ impl Config {
             {
                 return Err(ConfigError::Validation(format!(
                     "routed Android guest {} is outside network.guest_subnet",
+                    access.guest
+                )));
+            }
+            if !vm_addresses.contains(&access.guest) {
+                return Err(ConfigError::Validation(format!(
+                    "router access guest {} is not a configured Android VM",
                     access.guest
                 )));
             }
@@ -218,6 +258,14 @@ impl Config {
     }
 }
 
+fn valid_identifier(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 63
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -235,6 +283,10 @@ pub(crate) mod tests {
                     guest: "10.80.0.2".parse().unwrap(),
                 }],
             },
+            android_vms: vec![AndroidVmConfig {
+                name: "android-game-01".into(),
+                address: "10.80.0.2".parse().unwrap(),
+            }],
             network: NetworkConfig::default(),
             storage: StorageConfig::default(),
         }
@@ -271,6 +323,23 @@ pub(crate) mod tests {
     fn rejects_guest_outside_subnet() {
         let mut c = valid();
         c.router.access[0].guest = "10.81.0.2".parse().unwrap();
+        assert!(c.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_uninventoried_router_guest() {
+        let mut c = valid();
+        c.router.access[0].guest = "10.80.0.3".parse().unwrap();
+        assert!(c.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_duplicate_or_unsafe_vm_names() {
+        let mut c = valid();
+        c.android_vms[0].name = "../../domain".into();
+        assert!(c.validate().is_err());
+        let mut c = valid();
+        c.android_vms.push(c.android_vms[0].clone());
         assert!(c.validate().is_err());
     }
 }
