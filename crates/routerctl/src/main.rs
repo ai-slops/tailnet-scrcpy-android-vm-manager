@@ -23,6 +23,7 @@ enum Command {
     Enroll,
     FirewallPrint,
     FirewallApply,
+    DnsmasqPrint,
     Preflight,
 }
 
@@ -42,10 +43,13 @@ fn main() -> anyhow::Result<ExitCode> {
                 );
             }
         },
-        Command::FirewallPrint => print!("{}", firewall::render(&config, false)),
+        Command::FirewallPrint => print!("{}", firewall::render(&config, false)?),
         Command::FirewallApply => {
             firewall::apply(&config)?;
             println!("Installed router forwarding allowlist.");
+        }
+        Command::DnsmasqPrint => {
+            print!("{}", manager_core::guest_bootstrap::dnsmasq_config(&config))
         }
         Command::Preflight => {
             let forwarding = std::fs::read_to_string("/proc/sys/net/ipv4/ip_forward")

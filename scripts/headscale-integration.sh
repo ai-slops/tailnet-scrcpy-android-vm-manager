@@ -78,12 +78,13 @@ config="$project_dir/config.toml"
   printf 'hostname = "integration-router"\n'
   printf 'auth_key_file = "/run/secrets/unused"\n'
   printf 'tailscale_interface = "tailscale0"\n'
+  printf 'uplink_interface = "eth0"\n'
   printf 'guest_interface = "eth1"\n'
   printf 'lan_address = "10.80.0.3"\n'
   printf '\n'
-  printf '[[router.access]]\nsource = "%s"\nguest = "10.80.0.2"\n\n' "$controller_ip"
+  printf '[[router.access]]\nsources = ["%s"]\nguest = "10.80.0.2"\n\n' "$controller_ip"
   printf '[[android_vms]]\nname = "integration-android"\naddress = "10.80.0.2"\n\n'
-  printf '[network]\nlibvirt_bridge = "vmbr-android"\nguest_subnet = "10.80.0.0/24"\n'
+  printf '[network]\nrouter_uplink_network = "default"\nguest_network = "tailnet-android-guest"\nguest_bridge = "vmbr-android"\nguest_subnet = "10.80.0.0/24"\n'
   printf '[storage]\nstate_dir = "/tmp/state"\nimage_dir = "/tmp/images"\nvm_dir = "/tmp/vms"\n'
 } >"$config"
 
@@ -92,7 +93,7 @@ config="$project_dir/config.toml"
   ZIG_LOCAL_CACHE_DIR="$root/.local/cache/zig" \
     ZIG_GLOBAL_CACHE_DIR="$root/.local/cache/zig-global" \
     cargo run -q -p routerctl -- --config "$config" firewall-print
-) | docker compose -f "$compose" exec -T router nft -f -
+) | docker compose -f "$compose" exec -T router nft -j -f -
 
 attempt=0
 response=

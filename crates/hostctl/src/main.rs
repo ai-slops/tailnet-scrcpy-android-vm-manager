@@ -5,6 +5,7 @@ use clap::{Parser, Subcommand};
 use manager_core::{
     adb::AdbPublicKey,
     config::Config,
+    guest_bootstrap, libvirt_network,
     lifecycle::{self, SystemVirsh},
     preflight::{self, CheckStatus, SystemProbe},
     router_vm, snapshot,
@@ -28,6 +29,8 @@ enum Command {
     Preflight,
     /// Print the dedicated Tailnet router VM libvirt domain XML.
     RouterDomainXml,
+    /// Print the host-address-free isolated Android libvirt network XML.
+    GuestNetworkXml,
     /// Operate a configured persistent Android VM.
     Vm {
         #[command(subcommand)]
@@ -42,6 +45,14 @@ enum Command {
 
 #[derive(Debug, Subcommand)]
 enum VmCommand {
+    /// Print this persistent Android VM's libvirt domain XML.
+    DomainXml {
+        name: String,
+    },
+    /// Validate and print this VM's Android ADB authorized_keys content.
+    AdbAuthorizedKeys {
+        name: String,
+    },
     Status {
         name: String,
     },
@@ -105,10 +116,24 @@ fn main() -> anyhow::Result<ExitCode> {
             print!("{}", router_vm::domain_xml(&config));
             Ok(ExitCode::SUCCESS)
         }
+        Command::GuestNetworkXml => {
+            let config = Config::load(&cli.config)
+                .with_context(|| format!("failed to load {}", cli.config.display()))?;
+            print!("{}", libvirt_network::guest_network_xml(&config));
+            Ok(ExitCode::SUCCESS)
+        }
         Command::Vm { command } => {
             let config = Config::load(&cli.config)
                 .with_context(|| format!("failed to load {}", cli.config.display()))?;
             match command {
+                VmCommand::DomainXml { name } => {
+                    let vm = lifecycle::find_vm(&config, &name)?;
+                    print!("{}", manager_core::android_vm::domain_xml(&config, vm));
+                }
+                VmCommand::AdbAuthorizedKeys { name } => {
+                    let vm = lifecycle::find_vm(&config, &name)?;
+                    print!("{}", guest_bootstrap::adb_authorized_keys(vm)?);
+                }
                 VmCommand::Status { name } => {
                     let vm = lifecycle::find_vm(&config, &name)?;
                     println!("{:?}", lifecycle::state(&SystemVirsh, vm)?);

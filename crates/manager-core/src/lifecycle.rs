@@ -201,6 +201,9 @@ mod tests {
         AndroidVmConfig {
             name: "android-game-01".into(),
             address: "10.80.0.2".parse().unwrap(),
+            adb_public_key_files: vec![],
+            vcpus: 4,
+            memory_mib: 4096,
         }
     }
 

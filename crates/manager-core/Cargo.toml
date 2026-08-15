@@ -8,7 +8,9 @@ rust-version.workspace = true
 [dependencies]
 base64.workspace = true
 ipnet = { version = "2.12.1", features = ["serde"] }
+nftables = "0.6.3"
 serde.workspace = true
+serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
 toml.workspace = true

@@ -3,19 +3,25 @@ hostname = "android-tailnet-router"
 # This path exists inside the dedicated router VM, never on the KVM host.
 auth_key_file = "/etc/tailnet-android-vm-manager/secrets/tailscale-authkey"
 tailscale_interface = "tailscale0"
-guest_interface = "ens3"
+uplink_interface = "ens3"
+guest_interface = "ens4"
 lan_address = "10.80.0.1"
 
 [[router.access]]
-source = "100.64.0.2"
+sources = ["100.64.0.2", "100.64.0.3"]
 guest = "10.80.0.2"
 
 [[android_vms]]
 name = "android-game-01"
 address = "10.80.0.2"
+adb_public_key_files = ["/etc/tailnet-android-vm-manager/adb-keys/my-iphone.pub"]
+vcpus = 4
+memory_mib = 4096
 
 [network]
-libvirt_bridge = "vmbr-android"
+router_uplink_network = "default"
+guest_network = "tailnet-android-guest"
+guest_bridge = "vmbr-android"
 guest_subnet = "10.80.0.0/24"
 
 [storage]

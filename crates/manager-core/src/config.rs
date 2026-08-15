@@ -24,6 +24,19 @@ pub struct Config {
 pub struct AndroidVmConfig {
     pub name: String,
     pub address: Ipv4Addr,
+    #[serde(default)]
+    pub adb_public_key_files: Vec<PathBuf>,
+    #[serde(default = "default_vm_vcpus")]
+    pub vcpus: u16,
+    #[serde(default = "default_vm_memory_mib")]
+    pub memory_mib: u32,
+}
+
+const fn default_vm_vcpus() -> u16 {
+    4
+}
+const fn default_vm_memory_mib() -> u32 {
+    4096
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -33,6 +46,7 @@ pub struct RouterConfig {
     pub auth_key_file: PathBuf,
     #[serde(default = "default_tailscale_interface")]
     pub tailscale_interface: String,
+    pub uplink_interface: String,
     pub guest_interface: String,
     pub lan_address: Ipv4Addr,
     pub access: Vec<RouterAccess>,
@@ -41,7 +55,7 @@ pub struct RouterConfig {
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq, Hash)]
 #[serde(deny_unknown_fields)]
 pub struct RouterAccess {
-    pub source: Ipv4Addr,
+    pub sources: Vec<Ipv4Addr>,
     pub guest: Ipv4Addr,
 }
 
@@ -51,14 +65,18 @@ fn default_tailscale_interface() -> String {
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub struct NetworkConfig {
-    pub libvirt_bridge: String,
+    pub router_uplink_network: String,
+    pub guest_network: String,
+    pub guest_bridge: String,
     pub guest_subnet: IpNet,
 }
 
 impl Default for NetworkConfig {
     fn default() -> Self {
         Self {
-            libvirt_bridge: "vmbr-android".into(),
+            router_uplink_network: "default".into(),
+            guest_network: "tailnet-android-guest".into(),
+            guest_bridge: "vmbr-android".into(),
             guest_subnet: "10.80.0.0/24".parse().expect("valid default guest subnet"),
         }
     }
@@ -177,15 +195,42 @@ impl Config {
                     "Android VM names and addresses must be unique".into(),
                 ));
             }
+            if vm.vcpus == 0 || vm.vcpus > 64 || vm.memory_mib < 512 {
+                return Err(ConfigError::Validation(format!(
+                    "Android VM {} has invalid vcpus or memory_mib",
+                    vm.name
+                )));
+            }
+            for path in &vm.adb_public_key_files {
+                if !path.is_absolute() {
+                    return Err(ConfigError::Validation(format!(
+                        "Android VM {} ADB public-key paths must be absolute",
+                        vm.name
+                    )));
+                }
+            }
         }
         let mut mappings = std::collections::HashSet::new();
         for access in &self.router.access {
-            let octets = access.source.octets();
-            if octets[0] != 100 || !(64..=127).contains(&octets[1]) {
+            if access.sources.is_empty() {
                 return Err(ConfigError::Validation(format!(
-                    "controller source {} is outside 100.64.0.0/10",
-                    access.source
+                    "router access for {} must contain at least one source",
+                    access.guest
                 )));
+            }
+            for source in &access.sources {
+                let octets = source.octets();
+                if octets[0] != 100 || !(64..=127).contains(&octets[1]) {
+                    return Err(ConfigError::Validation(format!(
+                        "controller source {source} is outside 100.64.0.0/10"
+                    )));
+                }
+                if !mappings.insert((*source, access.guest)) {
+                    return Err(ConfigError::Validation(format!(
+                        "duplicate router access mapping {source} -> {}",
+                        access.guest
+                    )));
+                }
             }
             if !self
                 .network
@@ -203,17 +248,12 @@ impl Config {
                     access.guest
                 )));
             }
-            if !mappings.insert(access) {
-                return Err(ConfigError::Validation(format!(
-                    "duplicate router access mapping {} -> {}",
-                    access.source, access.guest
-                )));
-            }
         }
         for (name, value) in [
             ("tailscale_interface", &self.router.tailscale_interface),
+            ("uplink_interface", &self.router.uplink_interface),
             ("guest_interface", &self.router.guest_interface),
-            ("libvirt_bridge", &self.network.libvirt_bridge),
+            ("guest_bridge", &self.network.guest_bridge),
         ] {
             if value.is_empty()
                 || value.len() > 15
@@ -223,6 +263,16 @@ impl Config {
             {
                 return Err(ConfigError::Validation(format!(
                     "{name} is not a valid Linux interface name"
+                )));
+            }
+        }
+        for (name, value) in [
+            ("router_uplink_network", &self.network.router_uplink_network),
+            ("guest_network", &self.network.guest_network),
+        ] {
+            if !valid_identifier(value) {
+                return Err(ConfigError::Validation(format!(
+                    "network.{name} is not a valid libvirt network name"
                 )));
             }
         }
@@ -258,16 +308,20 @@ pub(crate) mod tests {
                 hostname: "android-tailnet-router".into(),
                 auth_key_file: "/run/secrets/tailscale-authkey".into(),
                 tailscale_interface: "tailscale0".into(),
-                guest_interface: "ens3".into(),
+                uplink_interface: "ens3".into(),
+                guest_interface: "ens4".into(),
                 lan_address: "10.80.0.1".parse().unwrap(),
                 access: vec![RouterAccess {
-                    source: "100.64.0.2".parse().unwrap(),
+                    sources: vec!["100.64.0.2".parse().unwrap()],
                     guest: "10.80.0.2".parse().unwrap(),
                 }],
             },
             android_vms: vec![AndroidVmConfig {
                 name: "android-game-01".into(),
                 address: "10.80.0.2".parse().unwrap(),
+                adb_public_key_files: vec![],
+                vcpus: 4,
+                memory_mib: 4096,
             }],
             network: NetworkConfig::default(),
             storage: StorageConfig::default(),
@@ -298,7 +352,7 @@ pub(crate) mod tests {
     #[test]
     fn rejects_non_tailnet_source() {
         let mut c = valid();
-        c.router.access[0].source = "192.0.2.1".parse().unwrap();
+        c.router.access[0].sources[0] = "192.0.2.1".parse().unwrap();
         assert!(c.validate().is_err());
     }
     #[test]
