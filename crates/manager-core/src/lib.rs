@@ -8,6 +8,7 @@ pub mod guest_bootstrap;
 pub mod libvirt_network;
 pub mod lifecycle;
 pub mod preflight;
+pub mod provision;
 pub mod router_vm;
 pub mod snapshot;
 pub mod tailscale;

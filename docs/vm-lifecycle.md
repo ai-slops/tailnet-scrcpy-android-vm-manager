@@ -5,6 +5,19 @@ The VM name is also its fixed libvirt domain name, and its fixed address must be
 inside `network.guest_subnet`. Router access entries may refer only to addresses
 in this inventory.
 
+Each entry names an immutable qcow2 `base_image`. Creation verifies that format,
+creates a persistent overlay without overwriting an existing file, and defines
+a libvirt domain on the isolated guest network:
+
+~~~shell
+just android-xml android-game-01 .local/phone/config.toml
+just android-create android-game-01 .local/phone/config.toml
+~~~
+
+The VM's MAC is derived from its configured address. Router dnsmasq therefore
+returns the same address after VM, router, or host restarts without putting a
+DHCP or guest-subnet address on the KVM host.
+
 The Tailnet router advertises an inventoried VM's `/32` independently of its
 power state. Turning a game VM on or off therefore does not require a new route
 approval or firewall update. A connection to a stopped VM simply times out.

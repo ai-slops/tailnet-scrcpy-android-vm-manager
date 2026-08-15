@@ -20,6 +20,11 @@ only the test Android `/32` and forward only mapped controller traffic to ADB.
 Record the date and versions of Scrcpy Remote, iOS or iPadOS, both Tailscale
 clients, Android, and the host distribution.
 
+Also record whether Scrcpy Remote uses its embedded tsnet forwarder or the iOS
+system Tailscale VPN. In embedded mode, record and sign the distinct Scrcpy
+Remote machine shown in the Tailscale admin console; its IPv4 is the router
+allowlist source.
+
 ## 2. Validate the iOS ADB public key
 
 Export the ADB public key from Scrcpy Remote. Never copy its private key to the

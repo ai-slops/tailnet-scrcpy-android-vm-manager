@@ -45,6 +45,11 @@ pub fn domain_xml(config: &Config, vm: &AndroidVmConfig) -> String {
       <port isolated='yes'/>
       <model type='virtio'/>
     </interface>
+    <graphics type='spice' autoport='yes' listen='127.0.0.1'>
+      <listen type='address' address='127.0.0.1'/>
+    </graphics>
+    <video><model type='virtio' heads='1' primary='yes'/></video>
+    <input type='tablet' bus='usb'/>
     <serial type='pty'><target type='isa-serial' port='0'/></serial>
     <console type='pty'><target type='serial' port='0'/></console>
   </devices>
@@ -80,6 +85,7 @@ mod tests {
         assert!(xml.contains("android-game-01.qcow2"));
         assert!(xml.contains("network='tailnet-android-guest'"));
         assert!(xml.contains("<port isolated='yes'/>"));
+        assert!(xml.contains("listen='127.0.0.1'"));
         assert_eq!(mac_address(vm), "52:54:00:50:00:02");
     }
 }

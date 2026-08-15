@@ -70,6 +70,17 @@ pub fn dnsmasq_config(config: &Config) -> String {
     output
 }
 
+#[must_use]
+pub fn router_netplan(config: &Config) -> String {
+    format!(
+        "network:\n  version: 2\n  ethernets:\n    {}:\n      dhcp4: true\n      dhcp6: false\n    {}:\n      dhcp4: false\n      dhcp6: false\n      addresses: [{}/{}]\n",
+        config.router.uplink_interface,
+        config.router.guest_interface,
+        config.router.lan_address,
+        config.network.guest_subnet.prefix_len(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -81,5 +92,13 @@ mod tests {
         assert!(output.contains("interface=ens4"));
         assert!(output.contains("dhcp-option=option:router,10.80.0.1"));
         assert!(output.contains("52:54:00:50:00:02,10.80.0.2,android-game-01,infinite"));
+    }
+
+    #[test]
+    fn generates_two_nic_router_netplan() {
+        let output = router_netplan(&crate::config::tests::valid());
+        assert!(output.contains("ens3:\n      dhcp4: true"));
+        assert!(output.contains("ens4:\n      dhcp4: false"));
+        assert!(output.contains("addresses: [10.80.0.1/24]"));
     }
 }

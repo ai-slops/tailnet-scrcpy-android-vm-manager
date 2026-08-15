@@ -46,7 +46,7 @@ credentials.
 ## Security coverage and limits
 
 This test covers local control-plane enrollment, subnet-route approval, the
-generated nftables controller-IP allowlist, reply traffic, and denial of a
+generated typed nftables controller/guest set, reply traffic, and denial of a
 second enrolled node. It therefore verifies that tailnet membership alone does
 not grant access to the simulated Android endpoint.
 

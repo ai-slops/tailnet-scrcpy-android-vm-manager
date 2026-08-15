@@ -24,6 +24,7 @@ enum Command {
     FirewallPrint,
     FirewallApply,
     DnsmasqPrint,
+    NetplanPrint,
     Preflight,
 }
 
@@ -51,9 +52,40 @@ fn main() -> anyhow::Result<ExitCode> {
         Command::DnsmasqPrint => {
             print!("{}", manager_core::guest_bootstrap::dnsmasq_config(&config))
         }
+        Command::NetplanPrint => {
+            print!("{}", manager_core::guest_bootstrap::router_netplan(&config))
+        }
         Command::Preflight => {
             let forwarding = std::fs::read_to_string("/proc/sys/net/ipv4/ip_forward")
                 .is_ok_and(|v| v.trim() == "1");
+            let uplink = command_succeeds(
+                "ip",
+                &["link", "show", "dev", &config.router.uplink_interface],
+            );
+            let guest = std::process::Command::new("ip")
+                .args([
+                    "-4",
+                    "address",
+                    "show",
+                    "dev",
+                    &config.router.guest_interface,
+                ])
+                .output()
+                .is_ok_and(|output| {
+                    output.status.success()
+                        && String::from_utf8_lossy(&output.stdout).contains(&format!(
+                            "{}/{}",
+                            config.router.lan_address,
+                            config.network.guest_subnet.prefix_len()
+                        ))
+                });
+            let tailnet = command_succeeds(
+                "ip",
+                &["link", "show", "dev", &config.router.tailscale_interface],
+            );
+            let firewall =
+                command_succeeds("nft", &["list", "table", "inet", "tailnet_android_router"]);
+            let dnsmasq = command_succeeds("systemctl", &["is-active", "--quiet", "dnsmasq"]);
             let lock = std::process::Command::new("tailscale")
                 .args(["lock", "status"])
                 .output()
@@ -66,11 +98,30 @@ fn main() -> anyhow::Result<ExitCode> {
                 "[{}] ipv4-forwarding",
                 if forwarding { "PASS" } else { "FAIL" }
             );
+            for (name, passed) in [
+                ("uplink-interface", uplink),
+                ("guest-address", guest),
+                ("tailscale-interface", tailnet),
+                ("router-firewall", firewall),
+                ("guest-dhcp-dns", dnsmasq),
+            ] {
+                println!("[{}] {name}", if passed { "PASS" } else { "FAIL" });
+            }
             println!("[{}] tailnet-lock", if lock { "PASS" } else { "FAIL" });
-            if !forwarding || !lock {
+            if ![forwarding, uplink, guest, tailnet, firewall, dnsmasq, lock]
+                .into_iter()
+                .all(|passed| passed)
+            {
                 return Ok(ExitCode::FAILURE);
             }
         }
     }
     Ok(ExitCode::SUCCESS)
+}
+
+fn command_succeeds(program: &str, args: &[&str]) -> bool {
+    std::process::Command::new(program)
+        .args(args)
+        .status()
+        .is_ok_and(|status| status.success())
 }

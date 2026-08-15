@@ -60,9 +60,11 @@ control.
 - generates and atomically installs the router-owned nftables table; and
 - checks IPv4 forwarding and Tailnet Lock readiness.
 
-The forwarding chain is fail-closed. It permits a configured Tailscale source
-IPv4 address to reach only its mapped guest on TCP 5555, permits established
-reply traffic, and drops every other forwarded packet.
+The forwarding chain is fail-closed. A typed libnftables JSON ruleset stores
+each `(Tailscale source IPv4, Android destination IPv4)` pair in a concatenated
+set, so multiple approved phones do not duplicate rule structure. It permits
+only set members on TCP 5555, established replies and guest Internet NAT, and
+drops every other forwarded packet.
 
 ### Android VM runtime
 

@@ -1,39 +1,39 @@
 # Tailnet Router VM Provisioning
 
 The KVM host must not run `tailscaled`. A dedicated, persistent Linux router VM
-is the only node that joins the tailnet. It has one virtual NIC on the isolated
-Android bridge and obtains its Tailnet interface from `tailscaled` inside the
-VM.
+is the only node that joins the tailnet. It has one NAT uplink NIC and one NIC
+on the host-address-free Android network, and obtains its Tailnet interface
+from `tailscaled` inside the VM.
 
 The router advertises one `/32` route for each configured Android VM. It never
-advertises the whole Android subnet. Router-local nftables rules permit only a
-configured controller Tailscale IPv4 address to reach its assigned Android
-address on ADB TCP 5555. Established reply traffic is allowed; all other
-Tailnet-to-Android forwarding is dropped.
+advertises the whole Android subnet. Router-local nftables uses a set of
+configured controller IPv4 and Android destination pairs. Only listed pairs may
+reach ADB TCP 5555. Established replies and guest Internet NAT are allowed; all
+other forwarding is dropped.
 
 ## Router VM baseline
 
 Create a small persistent Linux VM with approximately 1 vCPU, 512 MiB RAM, and
-an encrypted 4 GiB system disk. Attach only one virtual NIC to the private
-`vmbr-android` bridge. Do not attach a host bridge, macvtap interface, or public
-interface. The private bridge's controlled NAT path supplies outbound Internet
-access for Tailscale coordination and DERP when needed.
+an encrypted 4 GiB system disk. Attach its uplink only to a libvirt NAT network
+and its guest NIC only to `network.guest_network`. Do not attach a host LAN
+bridge, macvtap interface, or public interface. The uplink supplies outbound
+Internet access for Tailscale coordination, DERP, and guest NAT.
 
 Inside the router VM:
 
-1. assign `router.lan_address` (the example uses `10.80.0.1`) to
-   `router.guest_interface`;
-2. install Tailscale, nftables, and the `routerctl` binary;
+1. apply the generated netplan so the uplink uses DHCP and
+   `router.lan_address` belongs only to `router.guest_interface`;
+2. install Tailscale, nftables, dnsmasq, netplan, and `routerctl`;
 3. install the project config at
    `/etc/tailnet-android-vm-manager/config.toml`;
 4. enable IPv4 forwarding with `net.ipv4.ip_forward=1`; and
-5. keep every Android VM on the same isolated subnet, using the router address
-   as its gateway when return routing requires it.
+5. install the generated dnsmasq file for deterministic VM leases and make the
+   router the guest gateway and DNS forwarder.
 
 `hostctl` generates the fixed libvirt domain definition. First place a prepared
 router OS disk at the configured VM directory as `tailnet-router.qcow2`; the
-image must already contain Tailscale, nftables, `routerctl`, the project config,
-and persistent network configuration for `router.lan_address`. Then define and
+image must already contain Tailscale, nftables, dnsmasq, `routerctl`, and the
+project config. Then define and
 start it without copying a secret into domain XML:
 
 ~~~shell
@@ -44,10 +44,10 @@ sudo virsh autostart tailnet-android-router
 sudo virsh start tailnet-android-router
 ~~~
 
-The generated domain has one vCPU, 512 MiB RAM, one qcow2 disk, and exactly one
-VirtIO NIC attached to `network.libvirt_bridge`. It has no host/public NIC and
-contains no Tailscale auth key. Reproducible construction of the prepared OS
-disk remains part of the image-build phase.
+The generated domain has one vCPU, 512 MiB RAM, one qcow2 disk, a NAT uplink,
+and an isolated guest VirtIO NIC. It has no host-LAN/public NIC and contains no
+Tailscale auth key. Reproducible construction of the prepared OS disk remains
+part of the image-build phase.
 
 ## Auth key and enrollment
 
@@ -96,6 +96,8 @@ mandatory enforcement point.
 Inspect and install the policy inside the router VM:
 
 ~~~shell
+routerctl netplan-print
+routerctl dnsmasq-print
 routerctl firewall-print
 sudo routerctl firewall-apply
 sudo routerctl preflight
@@ -103,7 +105,9 @@ sudo routerctl preflight
 
 Run `firewall-apply` during router boot before accepting controller traffic and
 after every access mapping change. The command owns only the
-`inet tailnet_android_router` table and replaces that table atomically.
+`inet tailnet_android_router` table and replaces that table atomically through
+libnftables JSON. Controller/guest pairs use one concatenated nftables set
+instead of one generated rule per controller.
 
 Scrcpy Remote connects directly to the persistent Android address and TCP port
 5555, for example `10.80.0.2:5555`. Tailnet Lock admits the controller and

@@ -24,6 +24,7 @@ pub struct Config {
 pub struct AndroidVmConfig {
     pub name: String,
     pub address: Ipv4Addr,
+    pub base_image: PathBuf,
     #[serde(default)]
     pub adb_public_key_files: Vec<PathBuf>,
     #[serde(default = "default_vm_vcpus")]
@@ -195,6 +196,12 @@ impl Config {
                     "Android VM names and addresses must be unique".into(),
                 ));
             }
+            if !vm.base_image.is_absolute() {
+                return Err(ConfigError::Validation(format!(
+                    "Android VM {} base_image must be absolute",
+                    vm.name
+                )));
+            }
             if vm.vcpus == 0 || vm.vcpus > 64 || vm.memory_mib < 512 {
                 return Err(ConfigError::Validation(format!(
                     "Android VM {} has invalid vcpus or memory_mib",
@@ -319,6 +326,7 @@ pub(crate) mod tests {
             android_vms: vec![AndroidVmConfig {
                 name: "android-game-01".into(),
                 address: "10.80.0.2".parse().unwrap(),
+                base_image: "/var/lib/tailnet-android-vm-manager/images/android-base.qcow2".into(),
                 adb_public_key_files: vec![],
                 vcpus: 4,
                 memory_mib: 4096,

@@ -90,6 +90,17 @@ SQLite in WAL mode.
 **Rationale:** A single-host deployment does not justify a separate database
 service. The schema retains `host_id`-compatible boundaries for future growth.
 
+### ADR-010: Use typed libnftables JSON and concatenated sets
+
+**Decision:** Router policy is generated with the `nftables` Rust crate and
+applied through nftables' JSON API. Allowed `(controller source, Android guest)`
+pairs live in one concatenated set.
+
+**Rationale:** Parsed IP addresses and a typed JSON schema avoid shell syntax
+construction. A set scales to several physical controller addresses without
+duplicating rule structure, and the complete project-owned table is replaced
+as one transaction.
+
 ## Pending validation
 
 ### ADR-P01: Scrcpy Remote endpoint behavior

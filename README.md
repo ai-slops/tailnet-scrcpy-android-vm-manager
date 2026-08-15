@@ -28,6 +28,8 @@ With `cargo`, Zig, and `just` on `PATH`, use the repository recipes:
 just check
 just headscale-test
 just preflight .local/spike/config.toml
+just guest-network-xml .local/phone/config.toml
+just android-create android-game-01 .local/phone/config.toml
 just --list
 ~~~
 
@@ -48,6 +50,7 @@ directly runnable with `sh scripts/...` when a recipe is not appropriate.
 - [Scrcpy Remote compatibility spike](docs/compatibility-spike.md)
 - [Development host setup](docs/host-setup.md)
 - [Local Headscale integration test](docs/integration-testing.md)
+- [Real iPhone connection runbook](docs/real-device-setup.md)
 
 ## Project status
 

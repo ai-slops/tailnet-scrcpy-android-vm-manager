@@ -61,6 +61,41 @@ adb-fingerprint public_key:
 router-xml config="config.example.toml":
   cargo run -q -p hostctl -- --config "{{config}}" router-domain-xml
 
+# Print the host-address-free Android guest network XML.
+guest-network-xml config="config.example.toml":
+  cargo run -q -p hostctl -- --config "{{config}}" guest-network-xml
+
+# Print one Android VM's libvirt domain XML.
+android-xml name config="config.example.toml":
+  cargo run -q -p hostctl -- --config "{{config}}" vm domain-xml "{{name}}"
+
+# Create one persistent Android overlay and define its domain.
+android-create name config="config.example.toml":
+  cargo run -q -p hostctl -- --config "{{config}}" vm create "{{name}}"
+
+# Validate and print one VM's configured Android ADB public keys.
+android-adb-keys name config="config.example.toml":
+  cargo run -q -p hostctl -- --config "{{config}}" vm adb-authorized-keys "{{name}}"
+
+# Print the router's two-NIC netplan configuration.
+router-netplan config="config.example.toml":
+  cargo run -q -p routerctl -- --config "{{config}}" netplan-print
+
+# Print the router's static Android DHCP/DNS configuration.
+router-dnsmasq config="config.example.toml":
+  cargo run -q -p routerctl -- --config "{{config}}" dnsmasq-print
+
+# Validate generated guest-network, router, and Android domain XML.
+libvirt-xml-check name="android-game-01" config="config.example.toml":
+  artifact_dir=$(mktemp -d /tmp/tailnet-android-xml.XXXXXX); \
+  trap 'rm -r "$artifact_dir"' EXIT INT TERM; \
+  cargo run -q -p hostctl -- --config "{{config}}" guest-network-xml >"$artifact_dir/guest.xml"; \
+  cargo run -q -p hostctl -- --config "{{config}}" router-domain-xml >"$artifact_dir/router.xml"; \
+  cargo run -q -p hostctl -- --config "{{config}}" vm domain-xml "{{name}}" >"$artifact_dir/android.xml"; \
+  virt-xml-validate "$artifact_dir/guest.xml"; \
+  virt-xml-validate "$artifact_dir/router.xml"; \
+  virt-xml-validate "$artifact_dir/android.xml"
+
 # Run one explicit Android emulator spike stage.
 android-spike stage:
   sh scripts/android-spike-sdk.sh "{{stage}}"

@@ -8,7 +8,7 @@ use manager_core::{
     guest_bootstrap, libvirt_network,
     lifecycle::{self, SystemVirsh},
     preflight::{self, CheckStatus, SystemProbe},
-    router_vm, snapshot,
+    provision, router_vm, snapshot,
 };
 
 #[derive(Debug, Parser)]
@@ -45,6 +45,10 @@ enum Command {
 
 #[derive(Debug, Subcommand)]
 enum VmCommand {
+    /// Create a persistent qcow2 overlay and define the libvirt domain.
+    Create {
+        name: String,
+    },
     /// Print this persistent Android VM's libvirt domain XML.
     DomainXml {
         name: String,
@@ -126,6 +130,11 @@ fn main() -> anyhow::Result<ExitCode> {
             let config = Config::load(&cli.config)
                 .with_context(|| format!("failed to load {}", cli.config.display()))?;
             match command {
+                VmCommand::Create { name } => {
+                    let vm = lifecycle::find_vm(&config, &name)?;
+                    provision::create(&config, vm)?;
+                    println!("Created");
+                }
                 VmCommand::DomainXml { name } => {
                     let vm = lifecycle::find_vm(&config, &name)?;
                     print!("{}", manager_core::android_vm::domain_xml(&config, vm));
