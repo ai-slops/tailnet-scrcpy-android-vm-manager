@@ -31,7 +31,7 @@ test:
 
 # Validate repository-local shell and patch syntax.
 static-check:
-  sh -n scripts/android-spike-sdk.sh scripts/headscale-integration.sh scripts/host-smoke.sh scripts/router-provision.sh scripts/router-provision-test.sh scripts/zig-cc
+  sh -n scripts/android-spike-sdk.sh scripts/headscale-integration.sh scripts/host-smoke.sh scripts/nested-ubuntu-test.sh scripts/router-provision.sh scripts/router-provision-test.sh scripts/zig-cc
   git diff --check
 
 # Validate the disposable Headscale Compose model without starting it.
@@ -74,6 +74,10 @@ router-console:
 router-provision-test:
   cargo build -q -p hostctl -p routerctl
   sh scripts/router-provision-test.sh
+
+# Clone this commit into a disposable Ubuntu VM and run the full nested-KVM suite.
+nested-ubuntu-test:
+  sh scripts/nested-ubuntu-test.sh
 
 # Print the host-address-free Android guest network XML.
 guest-network-xml config="config.example.toml":

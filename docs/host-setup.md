@@ -92,6 +92,24 @@ Then run the project-specific checks:
 just preflight .local/spike/config.toml
 ~~~
 
+## Disposable nested Ubuntu validation
+
+On an Ubuntu KVM host with nested virtualization enabled, validate a clean clone
+in a disposable Ubuntu 24.04 VM:
+
+~~~shell
+just nested-ubuntu-test
+~~~
+
+The recipe boots a four-vCPU cloud VM with host CPU passthrough, clones the
+current origin and checks out the exact current commit, installs the pinned mise
+tools, and runs `just check`, `just router-provision-test`, the real nested-KVM
+and rootless-Podman smoke test, and the Docker Headscale integration test. The
+VM and its runtime artifacts are removed on exit; the downloaded base image is
+cached in `/var/tmp`. Set `KEEP_NESTED_VM=1` to retain a failed VM for
+inspection. The current commit must exist on the remote;
+set `NESTED_TEST_REPO_URL` and `NESTED_TEST_REPO_REF` to test another source.
+
 The hostctl check additionally validates QEMU, libvirt, nftables, cgroup v2,
 and current-process KVM device access. It deliberately does not require
 Tailscale on the KVM host.
