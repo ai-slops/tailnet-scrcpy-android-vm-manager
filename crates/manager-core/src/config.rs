@@ -12,10 +12,24 @@ use thiserror::Error;
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub host: HostConfig,
+    pub tailscale: TailscaleConfig,
     #[serde(default)]
     pub network: NetworkConfig,
     #[serde(default)]
     pub storage: StorageConfig,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct TailscaleConfig {
+    pub hostname: String,
+    pub auth_key_file: PathBuf,
+    #[serde(default = "default_require_tailnet_lock")]
+    pub require_tailnet_lock: bool,
+}
+
+const fn default_require_tailnet_lock() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -112,6 +126,23 @@ impl Config {
                 "network.guest_subnet must be a private non-loopback IPv4 subnet".into(),
             ));
         }
+        if self.tailscale.hostname.is_empty()
+            || self.tailscale.hostname.len() > 63
+            || !self
+                .tailscale
+                .hostname
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'.')
+        {
+            return Err(ConfigError::Validation(
+                "tailscale.hostname is not a valid DNS-style hostname".into(),
+            ));
+        }
+        if !self.tailscale.auth_key_file.is_absolute() {
+            return Err(ConfigError::Validation(
+                "tailscale.auth_key_file must be absolute".into(),
+            ));
+        }
         if self.network.endpoint_port_start < 1024
             || self.network.endpoint_port_start > self.network.endpoint_port_end
         {
@@ -157,6 +188,11 @@ mod tests {
         Config {
             host: HostConfig {
                 tailnet_address: "100.64.0.1".parse().unwrap(),
+            },
+            tailscale: TailscaleConfig {
+                hostname: "android-vm-host".into(),
+                auth_key_file: "/run/secrets/tailscale-authkey".into(),
+                require_tailnet_lock: true,
             },
             network: NetworkConfig::default(),
             storage: StorageConfig::default(),

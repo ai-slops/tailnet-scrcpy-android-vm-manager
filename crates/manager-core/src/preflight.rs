@@ -27,6 +27,7 @@ pub trait HostProbe {
     fn path_read_write(&self, path: &Path) -> bool;
     fn command_succeeds(&self, program: &str, args: &[&str]) -> bool;
     fn interface_has_address(&self, interface: &str, address: &str) -> bool;
+    fn command_output(&self, program: &str, args: &[&str]) -> Option<String>;
 }
 
 pub struct SystemProbe;
@@ -57,6 +58,13 @@ impl HostProbe for SystemProbe {
                         .split_ascii_whitespace()
                         .any(|field| field.split('/').next() == Some(address))
             })
+    }
+
+    fn command_output(&self, program: &str, args: &[&str]) -> Option<String> {
+        let output = Command::new(program).args(args).output().ok()?;
+        let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
+        text.push_str(&String::from_utf8_lossy(&output.stderr));
+        output.status.success().then_some(text)
     }
 }
 
@@ -91,6 +99,29 @@ pub fn run(config: &Config, probe: &impl HostProbe) -> Vec<CheckResult> {
             )
         },
     });
+    if config.tailscale.require_tailnet_lock {
+        let status = probe.command_output("tailscale", &["lock", "status"]);
+        let enabled = status
+            .as_deref()
+            .is_some_and(|value| value.contains("Tailnet Lock is ENABLED."));
+        let accessible = status
+            .as_deref()
+            .is_some_and(|value| value.contains("This node is accessible under Tailnet Lock."));
+        results.push(CheckResult {
+            name: "tailnet-lock",
+            status: if enabled && accessible {
+                CheckStatus::Pass
+            } else {
+                CheckStatus::Fail
+            },
+            detail: if enabled && accessible {
+                "Tailnet Lock is enabled and this host is signed".into()
+            } else {
+                "Tailnet Lock is not enabled or this host still requires a signing-node signature"
+                    .into()
+            },
+        });
+    }
     results
 }
 
@@ -175,6 +206,9 @@ mod tests {
         fn interface_has_address(&self, _interface: &str, _address: &str) -> bool {
             false
         }
+        fn command_output(&self, _program: &str, _args: &[&str]) -> Option<String> {
+            None
+        }
     }
 
     struct InaccessibleKvmProbe;
@@ -192,6 +226,9 @@ mod tests {
         fn interface_has_address(&self, _interface: &str, _address: &str) -> bool {
             false
         }
+        fn command_output(&self, _program: &str, _args: &[&str]) -> Option<String> {
+            None
+        }
     }
 
     #[test]
@@ -206,6 +243,11 @@ mod tests {
         let config = Config {
             host: HostConfig {
                 tailnet_address: "100.64.0.1".parse().unwrap(),
+            },
+            tailscale: crate::config::TailscaleConfig {
+                hostname: "android-vm-host".into(),
+                auth_key_file: "/run/secrets/tailscale-authkey".into(),
+                require_tailnet_lock: true,
             },
             network: NetworkConfig::default(),
             storage: StorageConfig::default(),

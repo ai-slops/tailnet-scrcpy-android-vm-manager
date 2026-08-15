@@ -2,6 +2,13 @@
 # Replace with the stable Tailscale IPv4 address assigned to the KVM host.
 tailnet_address = "100.64.0.1"
 
+[tailscale]
+hostname = "android-vm-host"
+# Store the ordinary, preferably one-off auth key here with mode 0600. Never
+# commit the key itself. Tailnet Lock signing remains a separate manual step.
+auth_key_file = "/etc/tailnet-android-vm-manager/secrets/tailscale-authkey"
+require_tailnet_lock = true
+
 [network]
 tailscale_interface = "tailscale0"
 libvirt_bridge = "vmbr-android"

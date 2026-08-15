@@ -75,7 +75,7 @@ fn validate(config: &Config, cli: &Cli) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use manager_core::config::{HostConfig, NetworkConfig, StorageConfig};
+    use manager_core::config::{HostConfig, NetworkConfig, StorageConfig, TailscaleConfig};
 
     use super::*;
 
@@ -83,6 +83,11 @@ mod tests {
         Config {
             host: HostConfig {
                 tailnet_address: "100.64.0.1".parse().unwrap(),
+            },
+            tailscale: TailscaleConfig {
+                hostname: "android-vm-host".into(),
+                auth_key_file: "/run/secrets/tailscale-authkey".into(),
+                require_tailnet_lock: true,
             },
             network: NetworkConfig::default(),
             storage: StorageConfig::default(),
