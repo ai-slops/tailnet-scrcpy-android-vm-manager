@@ -100,6 +100,8 @@ The MVP requires:
   configuration validation;
 - integration tests against libvirt, nftables, and a disposable Android VM;
 - negative network tests from LAN, unauthorized tailnet nodes, and other guests;
+- a disposable local Headscale test for enrollment, `/32` route approval, and
+  controller source-IP allowlisting (without Tailnet Lock coverage);
 - crash-recovery tests for API, agent, gateway, and host restarts;
 - revocation tests with an established ADB connection; and
 - a manual iOS compatibility suite for every supported Scrcpy Remote update.

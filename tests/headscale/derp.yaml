@@ -1,0 +1,13 @@
+regions:
+  900:
+    regionid: 900
+    regioncode: integration
+    regionname: Local Integration Placeholder
+    nodes:
+      - name: integration-placeholder
+        regionid: 900
+        hostname: headscale
+        ipv4: 172.30.0.2
+        stunport: 0
+        stunonly: false
+        derpport: 1

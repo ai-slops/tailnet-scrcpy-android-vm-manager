@@ -1,0 +1,98 @@
+name: tailnet-android-headscale-test
+
+x-tailscale: &tailscale
+  image: tailnet-android-router-integration:v1.102.2
+  cap_add: [NET_ADMIN, NET_RAW]
+  devices: [/dev/net/tun:/dev/net/tun]
+  environment: &tailscale-environment
+    TS_AUTHKEY: ${HEADSCALE_AUTHKEY:?run through scripts/headscale-integration.sh}
+    TS_STATE_DIR: /var/lib/tailscale
+    TS_USERSPACE: "false"
+    TS_TAILSCALED_EXTRA_ARGS: --no-logs-no-support
+    TS_DEBUG_FIREWALL_MODE: nftables
+  restart: "no"
+
+services:
+  headscale:
+    image: docker.io/headscale/headscale:0.27.1
+    command: serve
+    read_only: true
+    tmpfs: [/var/run/headscale]
+    volumes:
+      - ./config.yaml:/etc/headscale/config.yaml:ro
+      - ./policy.hujson:/etc/headscale/policy.hujson:ro
+      - ./derp.yaml:/etc/headscale/derp.yaml:ro
+      - headscale-state:/var/lib/headscale
+    networks:
+      control:
+        ipv4_address: 172.30.0.2
+
+  router:
+    <<: *tailscale
+    build:
+      context: .
+      dockerfile: Dockerfile.router
+    image: tailnet-android-router-integration:v1.102.2
+    hostname: integration-router
+    environment:
+      <<: *tailscale-environment
+      TS_HOSTNAME: integration-router
+      TS_EXTRA_ARGS: --login-server=http://headscale:8080 --accept-dns=false --accept-routes=false --advertise-routes=10.80.0.2/32
+    sysctls:
+      net.ipv4.ip_forward: "1"
+    volumes:
+      - router-state:/var/lib/tailscale
+    networks:
+      control:
+        interface_name: eth0
+      guest:
+        interface_name: eth1
+        ipv4_address: 10.80.0.3
+
+  controller:
+    <<: *tailscale
+    hostname: integration-controller
+    environment:
+      <<: *tailscale-environment
+      TS_HOSTNAME: integration-controller
+      TS_EXTRA_ARGS: --login-server=http://headscale:8080 --accept-dns=false --accept-routes=true
+    volumes:
+      - controller-state:/var/lib/tailscale
+    networks:
+      control:
+        interface_name: eth0
+
+  intruder:
+    <<: *tailscale
+    hostname: integration-intruder
+    environment:
+      <<: *tailscale-environment
+      TS_HOSTNAME: integration-intruder
+      TS_EXTRA_ARGS: --login-server=http://headscale:8080 --accept-dns=false --accept-routes=true
+    volumes:
+      - intruder-state:/var/lib/tailscale
+    networks:
+      control:
+        interface_name: eth0
+
+  guest:
+    image: docker.io/library/alpine:3.22
+    command: sh -c 'while true; do nc -l -p 5555 -e cat; done'
+    networks:
+      guest:
+        ipv4_address: 10.80.0.2
+
+networks:
+  control:
+    ipam:
+      config: [{subnet: 172.30.0.0/24}]
+  guest:
+    internal: true
+    ipam:
+      config: [{subnet: 10.80.0.0/24}]
+
+volumes:
+  headscale-state:
+  router-state:
+  controller-state:
+  intruder-state:

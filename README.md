@@ -30,6 +30,7 @@ libvirt, nftables, persistent qcow2 guests, and AOSP images.
 - [MVP plan](docs/mvp-plan.md)
 - [Scrcpy Remote compatibility spike](docs/compatibility-spike.md)
 - [Development host setup](docs/host-setup.md)
+- [Local Headscale integration test](docs/integration-testing.md)
 
 ## Project status
 
