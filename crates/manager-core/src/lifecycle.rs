@@ -156,7 +156,7 @@ pub fn wait_for_adb(vm: &AndroidVmConfig, timeout: Duration) -> Result<(), Lifec
     Err(LifecycleError::ReadinessTimeout(vm.address))
 }
 
-fn run(
+pub(crate) fn run(
     virsh: &impl Virsh,
     operation: &'static str,
     args: &[&str],

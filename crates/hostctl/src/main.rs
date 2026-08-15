@@ -7,7 +7,7 @@ use manager_core::{
     config::Config,
     lifecycle::{self, SystemVirsh},
     preflight::{self, CheckStatus, SystemProbe},
-    router_vm,
+    router_vm, snapshot,
 };
 
 #[derive(Debug, Parser)]
@@ -63,6 +63,19 @@ enum VmCommand {
     Hibernate {
         name: String,
     },
+    Snapshot {
+        name: String,
+        #[command(subcommand)]
+        command: SnapshotCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum SnapshotCommand {
+    List,
+    Create { snapshot: String },
+    Revert { snapshot: String },
+    Delete { snapshot: String },
 }
 
 fn main() -> anyhow::Result<ExitCode> {
@@ -129,6 +142,28 @@ fn main() -> anyhow::Result<ExitCode> {
                     let vm = lifecycle::find_vm(&config, &name)?;
                     lifecycle::hibernate(&SystemVirsh, vm)?;
                     println!("Hibernated");
+                }
+                VmCommand::Snapshot { name, command } => {
+                    let vm = lifecycle::find_vm(&config, &name)?;
+                    match command {
+                        SnapshotCommand::List => {
+                            for snapshot in snapshot::list(&SystemVirsh, vm)? {
+                                println!("{snapshot}");
+                            }
+                        }
+                        SnapshotCommand::Create { snapshot: name } => {
+                            snapshot::create(&SystemVirsh, vm, &name)?;
+                            println!("Created {name}");
+                        }
+                        SnapshotCommand::Revert { snapshot: name } => {
+                            snapshot::revert(&SystemVirsh, vm, &name)?;
+                            println!("Reverted to {name}");
+                        }
+                        SnapshotCommand::Delete { snapshot: name } => {
+                            snapshot::delete(&SystemVirsh, vm, &name)?;
+                            println!("Deleted {name}");
+                        }
+                    }
                 }
             }
             Ok(ExitCode::SUCCESS)

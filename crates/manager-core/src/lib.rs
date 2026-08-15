@@ -7,4 +7,5 @@ pub mod firewall;
 pub mod lifecycle;
 pub mod preflight;
 pub mod router_vm;
+pub mod snapshot;
 pub mod tailscale;
