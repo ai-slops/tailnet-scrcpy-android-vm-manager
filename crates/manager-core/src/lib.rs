@@ -5,4 +5,5 @@ pub mod config;
 pub mod endpoint;
 pub mod firewall;
 pub mod preflight;
+pub mod router_vm;
 pub mod tailscale;

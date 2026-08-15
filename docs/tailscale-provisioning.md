@@ -30,9 +30,24 @@ Inside the router VM:
 5. keep every Android VM on the same isolated subnet, using the router address
    as its gateway when return routing requires it.
 
-The manager will automate creation of this VM when general VM lifecycle support
-lands. The current `routerctl` is the guest-side provisioning and enforcement
-component and can be used with a manually created baseline VM now.
+`hostctl` generates the fixed libvirt domain definition. First place a prepared
+router OS disk at the configured VM directory as `tailnet-router.qcow2`; the
+image must already contain Tailscale, nftables, `routerctl`, the project config,
+and persistent network configuration for `router.lan_address`. Then define and
+start it without copying a secret into domain XML:
+
+~~~shell
+hostctl --config /etc/tailnet-android-vm-manager/config.toml \
+  router-domain-xml >.local/tailnet-router.xml
+sudo virsh define .local/tailnet-router.xml
+sudo virsh autostart tailnet-android-router
+sudo virsh start tailnet-android-router
+~~~
+
+The generated domain has one vCPU, 512 MiB RAM, one qcow2 disk, and exactly one
+VirtIO NIC attached to `network.libvirt_bridge`. It has no host/public NIC and
+contains no Tailscale auth key. Reproducible construction of the prepared OS
+disk remains part of the image-build phase.
 
 ## Auth key and enrollment
 

@@ -6,6 +6,7 @@ use manager_core::{
     adb::AdbPublicKey,
     config::Config,
     preflight::{self, CheckStatus, SystemProbe},
+    router_vm,
 };
 
 #[derive(Debug, Parser)]
@@ -24,6 +25,8 @@ struct Cli {
 enum Command {
     /// Validate configuration and required host capabilities.
     Preflight,
+    /// Print the dedicated Tailnet router VM libvirt domain XML.
+    RouterDomainXml,
     /// Validate an ADB public key and print its stable fingerprint.
     AdbFingerprint {
         /// File containing one Android ADB public-key line.
@@ -51,6 +54,12 @@ fn main() -> anyhow::Result<ExitCode> {
             } else {
                 ExitCode::FAILURE
             })
+        }
+        Command::RouterDomainXml => {
+            let config = Config::load(&cli.config)
+                .with_context(|| format!("failed to load {}", cli.config.display()))?;
+            print!("{}", router_vm::domain_xml(&config));
+            Ok(ExitCode::SUCCESS)
         }
         Command::AdbFingerprint { public_key } => {
             let contents = fs::read_to_string(&public_key)
