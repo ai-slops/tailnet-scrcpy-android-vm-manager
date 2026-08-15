@@ -24,6 +24,13 @@ sudo apt-get install --yes \
   fuse-overlayfs
 ~~~
 
+The optional Android Emulator spike also needs the emulator's XKB runtime
+library, even when it runs without a window:
+
+~~~shell
+sudo apt-get install --yes libxkbfile1
+~~~
+
 Do not use a Podman binary unpacked beneath the home directory on Ubuntu systems
 with AppArmor unprivileged-user-namespace restrictions. Applications that need
 unprivileged namespaces must be explicitly allowed by an AppArmor profile; the
@@ -106,6 +113,12 @@ sh scripts/android-spike-sdk.sh start
 The licenses step displays Google's Android SDK terms and requires the operator
 to accept or reject them interactively. The project does not auto-accept legal
 terms.
+
+With the current API 36 default system image, `avdmanager` may print that the
+image's optional `devices.xml` could not be loaded. The selected `pixel_8`
+profile is bundled with the command-line tools, so this message is non-fatal if
+the script subsequently reports that it created the AVD. The script verifies
+that the expected `config.ini` exists instead of relying on the message text.
 
 The downloaded SDK, system image, AVD, and VM data remain below .local/ and are
 not committed. See the [official SDK manager documentation](https://developer.android.com/tools/sdkmanager)
