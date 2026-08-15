@@ -38,12 +38,16 @@ Exit criteria:
 - Import and verify an immutable AOSP base image.
 - Create a VM-specific qcow2 overlay and libvirt domain.
 - Implement create, start, stop, reboot, reset, and delete operations.
+- Support SSD-backed hibernation through libvirt managed save.
+- Support snapshot create, list, revert, and delete while fully stopped.
 - Reconcile actual and desired state after process and host restarts.
 - Enforce CPU, memory, and disk limits.
 
 Exit criteria:
 
 - VM state survives host and service restarts;
+- hibernation releases guest RAM and restores through normal VM start;
+- snapshots cannot create a stale managed-save RAM/disk combination;
 - factory reset replaces only the overlay;
 - deletion is constrained to known VM resources; and
 - the guest has outbound internet but no path to another VM or host management

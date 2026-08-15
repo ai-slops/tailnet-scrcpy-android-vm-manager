@@ -122,11 +122,7 @@ pub fn stop(
             return Ok(VmState::Stopped);
         }
         VmState::Running => {
-            run(
-                virsh,
-                "shutdown",
-                &["shutdown", &vm.name, "--mode", "agent,acpi"],
-            )?;
+            run(virsh, "shutdown", &["shutdown", &vm.name, "--mode", "acpi"])?;
         }
     }
     let deadline = Instant::now() + timeout;

@@ -22,6 +22,7 @@ libvirt, nftables, persistent qcow2 guests, and AOSP images.
 ## Documentation
 
 - [Tailscale provisioning](docs/tailscale-provisioning.md)
+- [Persistent VM lifecycle and snapshots](docs/vm-lifecycle.md)
 - [Product requirements](docs/product-requirements.md)
 - [Architecture](docs/architecture.md)
 - [Security model](docs/security.md)

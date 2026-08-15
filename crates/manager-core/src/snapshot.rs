@@ -27,7 +27,9 @@ pub fn create(virsh: &impl Virsh, vm: &AndroidVmConfig, name: &str) -> Result<()
         "snapshot-create-as",
         &[
             "snapshot-create-as",
+            "--domain",
             &vm.name,
+            "--name",
             name,
             "--description",
             "managed by tailnet-android-vm-manager",
@@ -150,7 +152,9 @@ mod tests {
             fake.calls.lock().unwrap()[2],
             [
                 "snapshot-create-as",
+                "--domain",
                 "android-game-01",
+                "--name",
                 "before-update",
                 "--description",
                 "managed by tailnet-android-vm-manager",
