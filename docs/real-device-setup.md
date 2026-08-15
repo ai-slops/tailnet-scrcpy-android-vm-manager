@@ -49,58 +49,36 @@ sources = ["100.64.0.2", "100.64.0.3"]
 guest = "10.80.0.2"
 ~~~
 
-## 2. Define the isolated guest network
+## 2. Provision the isolated network and router VM
 
-Inspect and validate the generated XML before defining it:
+Install `cloud-image-utils` (for `cloud-localds`) and provide the SSH public
+key that may log in as the cloud image's `ubuntu` account:
 
 ~~~shell
-just guest-network-xml .local/phone/config.toml >.local/phone/guest-network.xml
-virt-xml-validate .local/phone/guest-network.xml
-sudo virsh net-define .local/phone/guest-network.xml
-sudo virsh net-autostart tailnet-android-guest
-sudo virsh net-start tailnet-android-guest
+sudo apt install cloud-image-utils qemu-utils libvirt-clients
+ROUTER_SSH_PUBLIC_KEY_FILE=/path/to/id_ed25519.pub \
+  just router-provision .local/phone/config.toml
 ~~~
 
-The network XML intentionally has no `<ip>` or `<forward>` element. The host
-therefore receives no guest-subnet address, DHCP service, or forwarding role.
-Android interfaces use libvirt port isolation, so they can reach the
-non-isolated router port but cannot exchange layer-2 traffic with one another.
+The recipe downloads and caches the official Ubuntu 24.04 cloud image, creates
+an 8 GiB qcow2 overlay and NoCloud seed, embeds the locally built `routerctl`
+and configuration, defines/starts the isolated network, and defines/starts the
+router domain. It refuses to overwrite either router artifact. Set
+`ROUTER_IMAGE_URL` only for a reviewed mirror or pinned image.
 
-## 3. Prepare the router VM
+Cloud-init installs Tailscale, nftables, and dnsmasq and applies netplan,
+forwarding, static guest leases, and the default-deny firewall. Inspect progress
+with `just router-console` and exit with `Ctrl+]`. Find its uplink address with
+`virsh domifaddr tailnet-android-router --source lease`, then SSH as `ubuntu`.
 
-Use a small persistent Ubuntu VM image with Tailscale, nftables, dnsmasq,
-netplan, and `routerctl` installed. Put its disk at
-`storage.vm_dir/tailnet-router.qcow2`, then generate and define the domain:
-
-~~~shell
-just router-xml .local/phone/config.toml >.local/phone/router.xml
-virt-xml-validate .local/phone/router.xml
-sudo virsh define .local/phone/router.xml
-sudo virsh autostart tailnet-android-router
-sudo virsh start tailnet-android-router
-~~~
-
-Copy the config and `routerctl` into the router. Inside the router, render and
-install the deterministic network services:
+The seed contains the public SSH key, but no private key, Tailscale auth key, or
+Tailnet Lock signing material. Inside the router, install an ordinary one-off
+auth key at the configured path and enroll:
 
 ~~~shell
-routerctl netplan-print >/etc/netplan/60-tailnet-android.yaml
-chmod 0600 /etc/netplan/60-tailnet-android.yaml
-netplan apply
-routerctl dnsmasq-print >/etc/dnsmasq.d/tailnet-android.conf
-systemctl restart dnsmasq
-sysctl -w net.ipv4.ip_forward=1
-routerctl firewall-apply
-~~~
-
-Make IPv4 forwarding persistent in `/etc/sysctl.d/`. The uplink obtains an
-address from the configured libvirt NAT network; the guest NIC owns
-`router.lan_address` and serves only static leases declared in `android_vms`.
-
-Enroll with an ordinary one-off Tailscale auth key:
-
-~~~shell
-routerctl enroll
+sudo install -d -m 0700 /etc/tailnet-android-vm-manager/secrets
+sudo install -m 0600 /dev/stdin /etc/tailnet-android-vm-manager/secrets/tailscale-authkey
+sudo routerctl enroll
 tailscale lock status
 ~~~
 
@@ -108,7 +86,7 @@ Run the displayed signing command on a trusted Tailnet Lock signing node, then
 approve only the advertised Android `/32` routes. Do not use a wrapped/signed
 auth key. Reapply `routerctl firewall-apply` whenever source mappings change.
 
-## 4. Create and bootstrap Android
+## 3. Create and bootstrap Android
 
 Create the persistent overlay and domain:
 
@@ -141,7 +119,7 @@ The validated bundle is available with:
 just android-adb-keys android-game-01 .local/phone/config.toml
 ~~~
 
-## 5. Admit Scrcpy Remote's Tailscale node and connect
+## 4. Admit Scrcpy Remote's Tailscale node and connect
 
 Current Scrcpy Remote builds contain an embedded `tsnet.Server` and TCP
 forwarder. When the app's built-in Tailscale mode is enabled, it is a distinct

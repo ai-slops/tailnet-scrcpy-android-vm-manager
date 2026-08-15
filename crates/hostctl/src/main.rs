@@ -29,6 +29,8 @@ enum Command {
     Preflight,
     /// Print the dedicated Tailnet router VM libvirt domain XML.
     RouterDomainXml,
+    /// Print host paths used by the router provisioner.
+    RouterArtifactPaths,
     /// Print the host-address-free isolated Android libvirt network XML.
     GuestNetworkXml,
     /// Operate a configured persistent Android VM.
@@ -118,6 +120,23 @@ fn main() -> anyhow::Result<ExitCode> {
             let config = Config::load(&cli.config)
                 .with_context(|| format!("failed to load {}", cli.config.display()))?;
             print!("{}", router_vm::domain_xml(&config));
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::RouterArtifactPaths => {
+            let config = Config::load(&cli.config)
+                .with_context(|| format!("failed to load {}", cli.config.display()))?;
+            println!("disk={}", router_vm::disk_path(&config).display());
+            println!("seed={}", router_vm::seed_path(&config).display());
+            println!(
+                "base={}",
+                config
+                    .storage
+                    .image_dir
+                    .join("ubuntu-24.04-server-cloudimg-amd64.img")
+                    .display()
+            );
+            println!("guest_network={}", config.network.guest_network);
+            println!("hostname={}", config.router.hostname);
             Ok(ExitCode::SUCCESS)
         }
         Command::GuestNetworkXml => {

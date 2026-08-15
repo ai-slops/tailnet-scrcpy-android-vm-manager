@@ -11,43 +11,26 @@ configured controller IPv4 and Android destination pairs. Only listed pairs may
 reach ADB TCP 5555. Established replies and guest Internet NAT are allowed; all
 other forwarding is dropped.
 
-## Router VM baseline
+## Router VM provisioning
 
-Create a small persistent Linux VM with approximately 1 vCPU, 512 MiB RAM, and
-an encrypted 4 GiB system disk. Attach its uplink only to a libvirt NAT network
+The generated persistent Linux VM has 1 vCPU, 512 MiB RAM, and an 8 GiB qcow2
+overlay. Attach its uplink only to a libvirt NAT network
 and its guest NIC only to `network.guest_network`. Do not attach a host LAN
 bridge, macvtap interface, or public interface. The uplink supplies outbound
 Internet access for Tailscale coordination, DERP, and guest NAT.
 
-Inside the router VM:
-
-1. apply the generated netplan so the uplink uses DHCP and
-   `router.lan_address` belongs only to `router.guest_interface`;
-2. install Tailscale, nftables, dnsmasq, netplan, and `routerctl`;
-3. install the project config at
-   `/etc/tailnet-android-vm-manager/config.toml`;
-4. enable IPv4 forwarding with `net.ipv4.ip_forward=1`; and
-5. install the generated dnsmasq file for deterministic VM leases and make the
-   router the guest gateway and DNS forwarder.
-
-`hostctl` generates the fixed libvirt domain definition. First place a prepared
-router OS disk at the configured VM directory as `tailnet-router.qcow2`; the
-image must already contain Tailscale, nftables, dnsmasq, `routerctl`, and the
-project config. Then define and
-start it without copying a secret into domain XML:
+Run the reproducible host-side provisioner:
 
 ~~~shell
-hostctl --config /etc/tailnet-android-vm-manager/config.toml \
-  router-domain-xml >.local/tailnet-router.xml
-sudo virsh define .local/tailnet-router.xml
-sudo virsh autostart tailnet-android-router
-sudo virsh start tailnet-android-router
+ROUTER_SSH_PUBLIC_KEY_FILE=/path/to/id_ed25519.pub just router-provision CONFIG
 ~~~
 
-The generated domain has one vCPU, 512 MiB RAM, one qcow2 disk, a NAT uplink,
-and an isolated guest VirtIO NIC. It has no host-LAN/public NIC and contains no
-Tailscale auth key. Reproducible construction of the prepared OS disk remains
-part of the image-build phase.
+It caches the official Ubuntu 24.04 image, creates the overlay and NoCloud seed,
+installs `routerctl` and its configuration, and starts both the isolated network
+and two-NIC domain. Cloud-init installs and configures Tailscale, nftables,
+dnsmasq, netplan, and persistent forwarding. Existing artifacts are never
+overwritten. Only the public SSH key is embedded; no Tailscale secret or
+Tailnet Lock signing material is copied into the VM definition or seed.
 
 ## Auth key and enrollment
 

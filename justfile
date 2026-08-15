@@ -31,7 +31,7 @@ test:
 
 # Validate repository-local shell and patch syntax.
 static-check:
-  sh -n scripts/android-spike-sdk.sh scripts/headscale-integration.sh scripts/host-smoke.sh scripts/zig-cc
+  sh -n scripts/android-spike-sdk.sh scripts/headscale-integration.sh scripts/host-smoke.sh scripts/router-provision.sh scripts/router-provision-test.sh scripts/zig-cc
   git diff --check
 
 # Validate the disposable Headscale Compose model without starting it.
@@ -60,6 +60,20 @@ adb-fingerprint public_key:
 # Print the router libvirt domain XML.
 router-xml config="config.example.toml":
   cargo run -q -p hostctl -- --config "{{config}}" router-domain-xml
+
+# Provision and start a dedicated Ubuntu router VM. Set ROUTER_SSH_PUBLIC_KEY_FILE.
+router-provision config="config.example.toml":
+  cargo build -q -p hostctl -p routerctl
+  sh scripts/router-provision.sh "{{config}}" target/debug/hostctl target/debug/routerctl
+
+# Open the router's serial console (exit with Ctrl+]).
+router-console:
+  virsh console tailnet-android-router
+
+# Exercise router image and seed creation without touching system libvirt.
+router-provision-test:
+  cargo build -q -p hostctl -p routerctl
+  sh scripts/router-provision-test.sh
 
 # Print the host-address-free Android guest network XML.
 guest-network-xml config="config.example.toml":

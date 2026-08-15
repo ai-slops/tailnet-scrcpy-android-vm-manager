@@ -29,6 +29,7 @@ just check
 just headscale-test
 just preflight .local/spike/config.toml
 just guest-network-xml .local/phone/config.toml
+ROUTER_SSH_PUBLIC_KEY_FILE=/path/to/id_ed25519.pub just router-provision .local/phone/config.toml
 just android-create android-game-01 .local/phone/config.toml
 just --list
 ~~~

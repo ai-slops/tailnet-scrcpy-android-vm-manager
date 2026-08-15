@@ -7,9 +7,15 @@ pub fn disk_path(config: &Config) -> PathBuf {
 }
 
 #[must_use]
+pub fn seed_path(config: &Config) -> PathBuf {
+    config.storage.vm_dir.join("tailnet-router-seed.img")
+}
+
+#[must_use]
 pub fn domain_xml(config: &Config) -> String {
     let disk = disk_path(config);
     let disk = xml_attribute(&disk.display().to_string());
+    let seed = xml_attribute(&seed_path(config).display().to_string());
     let uplink = xml_attribute(&config.network.router_uplink_network);
     let guest = xml_attribute(&config.network.guest_network);
     format!(
@@ -29,6 +35,12 @@ pub fn domain_xml(config: &Config) -> String {
       <driver name='qemu' type='qcow2' cache='none' discard='unmap'/>
       <source file='{disk}'/>
       <target dev='vda' bus='virtio'/>
+    </disk>
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <source file='{seed}'/>
+      <target dev='sda' bus='sata'/>
+      <readonly/>
     </disk>
     <interface type='network'>
       <mac address='52:54:00:00:00:01'/>
@@ -67,6 +79,7 @@ mod tests {
         let c = crate::config::tests::valid();
         let xml = domain_xml(&c);
         assert_eq!(xml.matches("<interface").count(), 2);
+        assert!(xml.contains("tailnet-router-seed.img"));
         assert!(xml.contains("network='default'"));
         assert!(xml.contains("network='tailnet-android-guest'"));
         assert!(!xml.contains("authkey"));
