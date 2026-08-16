@@ -21,6 +21,8 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     Enroll,
+    /// Reapply non-secret Tailscale route and safety settings.
+    Reconfigure,
     FirewallPrint,
     FirewallApply,
     DnsmasqPrint,
@@ -44,6 +46,10 @@ fn main() -> anyhow::Result<ExitCode> {
                 );
             }
         },
+        Command::Reconfigure => {
+            tailscale::reconfigure(&config, &SystemTailscale)?;
+            println!("Reapplied advertised Android /32 routes.");
+        }
         Command::FirewallPrint => print!("{}", firewall::render(&config, false)?),
         Command::FirewallApply => {
             firewall::apply(&config)?;

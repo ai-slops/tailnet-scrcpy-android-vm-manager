@@ -28,6 +28,22 @@ pub enum ProvisionError {
     Define(String),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EnsureResult {
+    Created,
+    Defined,
+}
+
+pub fn ensure(config: &Config, vm: &AndroidVmConfig) -> Result<EnsureResult, ProvisionError> {
+    if android_vm::disk_path(config, vm).exists() {
+        define(config, vm)?;
+        Ok(EnsureResult::Defined)
+    } else {
+        create(config, vm)?;
+        Ok(EnsureResult::Created)
+    }
+}
+
 pub fn create(config: &Config, vm: &AndroidVmConfig) -> Result<(), ProvisionError> {
     let base_metadata = fs::metadata(&vm.base_image)
         .map_err(|_| ProvisionError::InvalidBase(vm.base_image.display().to_string()))?;
@@ -84,6 +100,14 @@ pub fn create(config: &Config, vm: &AndroidVmConfig) -> Result<(), ProvisionErro
     }
     fs::remove_file(&temporary)?;
 
+    if let Err(error) = define(config, vm) {
+        fs::remove_file(&disk)?;
+        return Err(error);
+    }
+    Ok(())
+}
+
+pub fn define(config: &Config, vm: &AndroidVmConfig) -> Result<(), ProvisionError> {
     let mut child = Command::new("virsh")
         .args(["define", "/dev/stdin"])
         .stdin(Stdio::piped())
@@ -97,7 +121,6 @@ pub fn create(config: &Config, vm: &AndroidVmConfig) -> Result<(), ProvisionErro
         .write_all(android_vm::domain_xml(config, vm).as_bytes())?;
     let defined = child.wait_with_output()?;
     if !defined.status.success() {
-        fs::remove_file(&disk)?;
         return Err(ProvisionError::Define(output_text(&defined)));
     }
     Ok(())

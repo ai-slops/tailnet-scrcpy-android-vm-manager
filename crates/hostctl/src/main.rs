@@ -1,14 +1,17 @@
 use std::{fs, path::PathBuf, process::ExitCode, time::Duration};
 
 use anyhow::Context;
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use manager_core::{
     adb::AdbPublicKey,
+    bulk::{self, Operation},
     config::Config,
-    guest_bootstrap, libvirt_network,
+    guest_bootstrap,
+    inventory::{self, Selector},
+    libvirt_network,
     lifecycle::{self, SystemVirsh},
     preflight::{self, CheckStatus, SystemProbe},
-    provision, router_vm, snapshot,
+    provision, reconcile, router_vm, snapshot,
 };
 
 #[derive(Debug, Parser)]
@@ -33,6 +36,8 @@ enum Command {
     RouterArtifactPaths,
     /// Print the host-address-free isolated Android libvirt network XML.
     GuestNetworkXml,
+    /// Reconcile the network, router, and every configured Android domain.
+    Reconcile,
     /// Operate a configured persistent Android VM.
     Vm {
         #[command(subcommand)]
@@ -47,29 +52,36 @@ enum Command {
 
 #[derive(Debug, Subcommand)]
 enum VmCommand {
+    /// List configured VMs and their current states.
+    List {
+        /// Require every supplied label; omit to list the full inventory.
+        #[arg(long = "label")]
+        labels: Vec<String>,
+        #[arg(long)]
+        json: bool,
+        #[arg(long, default_value_t = 2)]
+        jobs: usize,
+    },
     /// Create a persistent qcow2 overlay and define the libvirt domain.
-    Create {
-        name: String,
-    },
+    Create { name: String },
     /// Print this persistent Android VM's libvirt domain XML.
-    DomainXml {
-        name: String,
-    },
+    DomainXml { name: String },
     /// Validate and print this VM's Android ADB authorized_keys content.
-    AdbAuthorizedKeys {
-        name: String,
-    },
+    AdbAuthorizedKeys { name: String },
     Status {
-        name: String,
+        #[command(flatten)]
+        selection: SelectionArgs,
     },
     Start {
-        name: String,
+        #[command(flatten)]
+        selection: SelectionArgs,
         /// Wait for TCP 5555 readiness after starting; zero disables the wait.
         #[arg(long, default_value_t = 0)]
         wait_ready_seconds: u64,
     },
     Stop {
-        name: String,
+        #[command(flatten)]
+        selection: SelectionArgs,
         #[arg(long, default_value_t = 30)]
         timeout_seconds: u64,
         /// Force power-off only if graceful shutdown exceeds the timeout.
@@ -78,13 +90,39 @@ enum VmCommand {
     },
     /// Save RAM state to SSD through libvirt managed save and power off.
     Hibernate {
-        name: String,
+        #[command(flatten)]
+        selection: SelectionArgs,
     },
     Snapshot {
         name: String,
         #[command(subcommand)]
         command: SnapshotCommand,
     },
+}
+
+#[derive(Debug, Clone, Args)]
+struct SelectionArgs {
+    /// Select one VM by name.
+    name: Option<String>,
+    /// Select the entire inventory.
+    #[arg(long)]
+    all: bool,
+    /// Select VMs containing every supplied label.
+    #[arg(long = "label")]
+    labels: Vec<String>,
+    /// Maximum concurrent VM operations.
+    #[arg(long, default_value_t = 2)]
+    jobs: usize,
+}
+
+impl SelectionArgs {
+    fn selector(&self) -> Selector {
+        Selector {
+            name: self.name.clone(),
+            all: self.all,
+            labels: self.labels.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Subcommand)]
@@ -145,56 +183,108 @@ fn main() -> anyhow::Result<ExitCode> {
             print!("{}", libvirt_network::guest_network_xml(&config));
             Ok(ExitCode::SUCCESS)
         }
+        Command::Reconcile => {
+            let config = Config::load(&cli.config)
+                .with_context(|| format!("failed to load {}", cli.config.display()))?;
+            let report = reconcile::run(&config)?;
+            for line in report.lines {
+                println!("{line}");
+            }
+            Ok(if report.failed {
+                ExitCode::FAILURE
+            } else {
+                ExitCode::SUCCESS
+            })
+        }
         Command::Vm { command } => {
             let config = Config::load(&cli.config)
                 .with_context(|| format!("failed to load {}", cli.config.display()))?;
             match command {
+                VmCommand::List { labels, json, jobs } => {
+                    if !(1..=32).contains(&jobs) {
+                        anyhow::bail!("--jobs must be between 1 and 32");
+                    }
+                    let selector = Selector {
+                        all: labels.is_empty(),
+                        labels,
+                        name: None,
+                    };
+                    let selected = inventory::select(&config, &selector)?;
+                    let rows = bulk::execute(&config, &selected, Operation::Status, jobs);
+                    if json {
+                        let output = rows
+                            .iter()
+                            .zip(selected.iter())
+                            .map(|(row, vm)| {
+                                serde_json::json!({
+                                    "name": row.name,
+                                    "address": vm.address,
+                                    "labels": vm.labels,
+                                    "autostart": vm.autostart,
+                                    "state": row.result.as_ref().map(|state| format!("{state:?}")).ok(),
+                                    "error": row.result.as_ref().err(),
+                                })
+                            })
+                            .collect::<Vec<_>>();
+                        println!("{}", serde_json::to_string_pretty(&output)?);
+                    } else {
+                        for (row, vm) in rows.iter().zip(selected.iter()) {
+                            let state = match &row.result {
+                                Ok(state) => format!("{state:?}"),
+                                Err(error) => format!("ERROR: {error}"),
+                            };
+                            println!(
+                                "{}\t{}\t{}\t{}",
+                                row.name,
+                                vm.address,
+                                vm.labels.join(","),
+                                state
+                            );
+                        }
+                    }
+                    Ok(exit_for_rows(&rows))
+                }
                 VmCommand::Create { name } => {
                     let vm = lifecycle::find_vm(&config, &name)?;
                     provision::create(&config, vm)?;
                     println!("Created");
+                    Ok(ExitCode::SUCCESS)
                 }
                 VmCommand::DomainXml { name } => {
                     let vm = lifecycle::find_vm(&config, &name)?;
                     print!("{}", manager_core::android_vm::domain_xml(&config, vm));
+                    Ok(ExitCode::SUCCESS)
                 }
                 VmCommand::AdbAuthorizedKeys { name } => {
                     let vm = lifecycle::find_vm(&config, &name)?;
                     print!("{}", guest_bootstrap::adb_authorized_keys(vm)?);
+                    Ok(ExitCode::SUCCESS)
                 }
-                VmCommand::Status { name } => {
-                    let vm = lifecycle::find_vm(&config, &name)?;
-                    println!("{:?}", lifecycle::state(&SystemVirsh, vm)?);
-                }
+                VmCommand::Status { selection } => run_bulk(&config, &selection, Operation::Status),
                 VmCommand::Start {
-                    name,
+                    selection,
                     wait_ready_seconds,
-                } => {
-                    let vm = lifecycle::find_vm(&config, &name)?;
-                    lifecycle::start(&SystemVirsh, vm)?;
-                    if wait_ready_seconds > 0 {
-                        lifecycle::wait_for_adb(vm, Duration::from_secs(wait_ready_seconds))?;
-                    }
-                    println!("Running");
-                }
+                } => run_bulk(
+                    &config,
+                    &selection,
+                    Operation::Start {
+                        wait_ready: Duration::from_secs(wait_ready_seconds),
+                    },
+                ),
                 VmCommand::Stop {
-                    name,
+                    selection,
                     timeout_seconds,
                     force_after_timeout,
-                } => {
-                    let vm = lifecycle::find_vm(&config, &name)?;
-                    lifecycle::stop(
-                        &SystemVirsh,
-                        vm,
-                        Duration::from_secs(timeout_seconds),
+                } => run_bulk(
+                    &config,
+                    &selection,
+                    Operation::Stop {
+                        timeout: Duration::from_secs(timeout_seconds),
                         force_after_timeout,
-                    )?;
-                    println!("Stopped");
-                }
-                VmCommand::Hibernate { name } => {
-                    let vm = lifecycle::find_vm(&config, &name)?;
-                    lifecycle::hibernate(&SystemVirsh, vm)?;
-                    println!("Hibernated");
+                    },
+                ),
+                VmCommand::Hibernate { selection } => {
+                    run_bulk(&config, &selection, Operation::Hibernate)
                 }
                 VmCommand::Snapshot { name, command } => {
                     let vm = lifecycle::find_vm(&config, &name)?;
@@ -217,9 +307,9 @@ fn main() -> anyhow::Result<ExitCode> {
                             println!("Deleted {name}");
                         }
                     }
+                    Ok(ExitCode::SUCCESS)
                 }
             }
-            Ok(ExitCode::SUCCESS)
         }
         Command::AdbFingerprint { public_key } => {
             let contents = fs::read_to_string(&public_key)
@@ -229,5 +319,32 @@ fn main() -> anyhow::Result<ExitCode> {
             println!("{}", key.fingerprint());
             Ok(ExitCode::SUCCESS)
         }
+    }
+}
+
+fn run_bulk(
+    config: &Config,
+    selection: &SelectionArgs,
+    operation: Operation,
+) -> anyhow::Result<ExitCode> {
+    if !(1..=32).contains(&selection.jobs) {
+        anyhow::bail!("--jobs must be between 1 and 32");
+    }
+    let selected = inventory::select(config, &selection.selector())?;
+    let rows = bulk::execute(config, &selected, operation, selection.jobs);
+    for row in &rows {
+        match &row.result {
+            Ok(state) => println!("{}\t{state:?}", row.name),
+            Err(error) => println!("{}\tERROR\t{error}", row.name),
+        }
+    }
+    Ok(exit_for_rows(&rows))
+}
+
+fn exit_for_rows(rows: &[bulk::ResultRow]) -> ExitCode {
+    if rows.iter().all(|row| row.result.is_ok()) {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
     }
 }

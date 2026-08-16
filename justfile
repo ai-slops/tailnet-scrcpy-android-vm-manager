@@ -31,7 +31,7 @@ test:
 
 # Validate repository-local shell and patch syntax.
 static-check:
-  sh -n scripts/android-spike-sdk.sh scripts/headscale-integration.sh scripts/host-smoke.sh scripts/nested-ubuntu-test.sh scripts/router-provision.sh scripts/router-provision-test.sh scripts/zig-cc
+  sh -n scripts/android-spike-sdk.sh scripts/headscale-integration.sh scripts/host-smoke.sh scripts/manager-integration.sh scripts/nested-ubuntu-test.sh scripts/router-provision.sh scripts/router-provision-test.sh scripts/router-sync.sh scripts/zig-cc
   git diff --check
 
 # Validate the disposable Headscale Compose model without starting it.
@@ -52,6 +52,53 @@ host-smoke:
 # Validate the host and project configuration.
 preflight config="config.example.toml":
   cargo run -q -p hostctl -- --config "{{config}}" preflight
+
+# Reconcile the isolated network, router, and all configured Android domains.
+reconcile config="config.example.toml":
+  cargo run -q -p hostctl -- --config "{{config}}" reconcile
+
+# Reconcile host state, then synchronize the running router VM.
+reconcile-all ssh_private_key config="config.example.toml":
+  cargo build -q -p hostctl -p routerctl
+  target/debug/hostctl --config "{{config}}" reconcile
+  sh scripts/router-sync.sh "{{config}}" "{{ssh_private_key}}" target/debug/routerctl
+
+# List the complete Android inventory and current state.
+vm-list config="config.example.toml":
+  cargo run -q -p hostctl -- --config "{{config}}" vm list
+
+# Start one Android VM.
+vm-start name config="config.example.toml":
+  cargo run -q -p hostctl -- --config "{{config}}" vm start "{{name}}"
+
+# Start every Android VM with bounded concurrency.
+vm-start-all jobs="2" config="config.example.toml":
+  cargo run -q -p hostctl -- --config "{{config}}" vm start --all --jobs "{{jobs}}"
+
+# Start every Android VM carrying a label.
+vm-start-label label jobs="2" config="config.example.toml":
+  cargo run -q -p hostctl -- --config "{{config}}" vm start --label "{{label}}" --jobs "{{jobs}}"
+
+# Stop every Android VM with bounded concurrency.
+vm-stop-all jobs="2" config="config.example.toml":
+  cargo run -q -p hostctl -- --config "{{config}}" vm stop --all --jobs "{{jobs}}"
+
+# Stop every Android VM carrying a label.
+vm-stop-label label jobs="2" config="config.example.toml":
+  cargo run -q -p hostctl -- --config "{{config}}" vm stop --label "{{label}}" --jobs "{{jobs}}"
+
+# Hibernate every Android VM with bounded concurrency.
+vm-hibernate-all jobs="2" config="config.example.toml":
+  cargo run -q -p hostctl -- --config "{{config}}" vm hibernate --all --jobs "{{jobs}}"
+
+# Hibernate every Android VM carrying a label.
+vm-hibernate-label label jobs="2" config="config.example.toml":
+  cargo run -q -p hostctl -- --config "{{config}}" vm hibernate --label "{{label}}" --jobs "{{jobs}}"
+
+# Exercise idempotent reconciliation and selectors without system libvirt.
+manager-test:
+  cargo build -q -p hostctl
+  sh scripts/manager-integration.sh
 
 # Validate an ADB public key and print its fingerprint.
 adb-fingerprint public_key:

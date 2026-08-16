@@ -92,6 +92,16 @@ after every access mapping change. The command owns only the
 libnftables JSON. Controller/guest pairs use one concatenated nftables set
 instead of one generated rule per controller.
 
+For inventory changes, prefer the host-side synchronized reconciliation:
+
+~~~shell
+just reconcile-all /path/to/router_ssh_key CONFIG
+~~~
+
+It updates the router config, static leases, nftables set, and advertised `/32`
+routes together. Tailscale's `set` command changes only explicitly supplied
+settings and does not require the enrollment auth key.
+
 Scrcpy Remote connects directly to the persistent Android address and TCP port
 5555, for example `10.80.0.2:5555`. Tailnet Lock admits the controller and
 router keys, route approval makes the `/32` reachable, router nftables checks

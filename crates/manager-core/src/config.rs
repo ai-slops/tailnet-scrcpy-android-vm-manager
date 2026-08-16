@@ -23,6 +23,8 @@ pub struct Config {
 #[serde(deny_unknown_fields)]
 pub struct AndroidVmConfig {
     pub name: String,
+    #[serde(default)]
+    pub labels: Vec<String>,
     pub address: Ipv4Addr,
     pub base_image: PathBuf,
     #[serde(default)]
@@ -31,6 +33,8 @@ pub struct AndroidVmConfig {
     pub vcpus: u16,
     #[serde(default = "default_vm_memory_mib")]
     pub memory_mib: u32,
+    #[serde(default)]
+    pub autostart: bool,
 }
 
 const fn default_vm_vcpus() -> u16 {
@@ -196,6 +200,15 @@ impl Config {
                     "Android VM names and addresses must be unique".into(),
                 ));
             }
+            let mut labels = std::collections::HashSet::new();
+            for label in &vm.labels {
+                if !valid_identifier(label) || !labels.insert(label) {
+                    return Err(ConfigError::Validation(format!(
+                        "Android VM {} labels must be unique valid identifiers",
+                        vm.name
+                    )));
+                }
+            }
             if !vm.base_image.is_absolute() {
                 return Err(ConfigError::Validation(format!(
                     "Android VM {} base_image must be absolute",
@@ -325,11 +338,13 @@ pub(crate) mod tests {
             },
             android_vms: vec![AndroidVmConfig {
                 name: "android-game-01".into(),
+                labels: vec!["game".into()],
                 address: "10.80.0.2".parse().unwrap(),
                 base_image: "/var/lib/tailnet-android-vm-manager/images/android-base.qcow2".into(),
                 adb_public_key_files: vec![],
                 vcpus: 4,
                 memory_mib: 4096,
+                autostart: false,
             }],
             network: NetworkConfig::default(),
             storage: StorageConfig::default(),
@@ -385,5 +400,14 @@ pub(crate) mod tests {
         let mut c = valid();
         c.android_vms.push(c.android_vms[0].clone());
         assert!(c.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_duplicate_or_unsafe_labels() {
+        let mut config = valid();
+        config.android_vms[0].labels = vec!["game".into(), "game".into()];
+        assert!(config.validate().is_err());
+        config.android_vms[0].labels = vec!["contains spaces".into()];
+        assert!(config.validate().is_err());
     }
 }

@@ -14,6 +14,55 @@ just android-xml android-game-01 .local/phone/config.toml
 just android-create android-game-01 .local/phone/config.toml
 ~~~
 
+Each VM may also declare `labels` and whether it should start with the host:
+
+~~~toml
+[[android_vms]]
+name = "game-01"
+labels = ["game", "account-a"]
+address = "10.80.0.2"
+base_image = "/var/lib/tailnet-android-vm-manager/images/android-base.qcow2"
+vcpus = 4
+memory_mib = 4096
+autostart = false
+~~~
+
+Labels are unique valid identifiers. Supplying several `--label` flags selects
+their intersection. `autostart = true` makes reconciliation enable libvirt
+autostart and ensure the VM is running; false disables libvirt autostart but
+does not stop an already-running VM.
+
+## Inventory reconciliation
+
+After the router has been provisioned, reconcile the full declared inventory:
+
+~~~shell
+just reconcile .local/phone/config.toml
+~~~
+
+This idempotently defines and starts the isolated network and router, creates a
+missing Android overlay or redefines an existing domain, and applies each VM's
+autostart policy. Router disk and seed artifacts must already exist because
+reconciliation never invents enrollment credentials. A global file lock
+prevents concurrent reconciliations. Android failures are reported per VM and
+do not prevent later inventory entries from being attempted.
+
+To also synchronize the already-running router VM, use the private half of the
+SSH key whose public half was supplied to `router-provision`:
+
+~~~shell
+just reconcile-all /path/to/id_ed25519 .local/phone/config.toml
+~~~
+
+This copies no private key into the VM. It uploads the validated project config
+and current `routerctl`, regenerates static dnsmasq leases, atomically replaces
+the nftables allowlist, and uses `tailscale set --advertise-routes` to update
+the deduplicated Android `/32` list without reusing an auth key. SSH host keys
+are accepted only on first use and retained under the ignored `.local/`
+directory; a changed host key stops synchronization.
+Newly advertised routes still require the normal Tailscale admin approval; the
+manager does not broaden that external authorization boundary.
+
 The VM's MAC is derived from its configured address. Router dnsmasq therefore
 returns the same address after VM, router, or host restarts without putting a
 DHCP or guest-subnet address on the KVM host.
@@ -42,12 +91,35 @@ type, CPU, firmware, or device-model changes.
 
 ## Commands
 
+List all configured VMs, optionally as machine-readable JSON:
+
+~~~shell
+hostctl vm list
+hostctl vm list --label game --json
+~~~
+
 Inspect and start a configured VM:
 
 ~~~shell
 hostctl vm status android-game-01
 hostctl vm start android-game-01 --wait-ready-seconds 120
 ~~~
+
+Apply lifecycle operations to all VMs or a label selection with bounded
+parallelism (default two workers, maximum 32):
+
+~~~shell
+hostctl vm start --label game --jobs 2
+hostctl vm status --all --jobs 4
+hostctl vm hibernate --label game --jobs 2
+hostctl vm stop --all --jobs 2
+~~~
+
+Equivalent common entry points are `just vm-start-all`,
+`just vm-start-label`, `just vm-stop-all`, `just vm-stop-label`,
+`just vm-hibernate-all`, and `just vm-hibernate-label`. Each VM operation takes
+an OS file lock. Results remain in inventory order, and any failed row makes the
+command exit nonzero without cancelling other selected VMs.
 
 The optional readiness wait succeeds when the host can establish TCP to the
 VM's fixed address on port 5555. It proves network/adbd availability, not ADB

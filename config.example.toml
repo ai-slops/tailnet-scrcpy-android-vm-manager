@@ -13,11 +13,13 @@ guest = "10.80.0.2"
 
 [[android_vms]]
 name = "android-game-01"
+labels = ["game", "primary"]
 address = "10.80.0.2"
 base_image = "/var/lib/tailnet-android-vm-manager/images/android-base.qcow2"
 adb_public_key_files = ["/etc/tailnet-android-vm-manager/adb-keys/my-iphone.pub"]
 vcpus = 4
 memory_mib = 4096
+autostart = false
 
 [network]
 router_uplink_network = "default"

@@ -7,6 +7,7 @@ rust-version.workspace = true
 
 [dependencies]
 base64.workspace = true
+fs2.workspace = true
 ipnet = { version = "2.12.1", features = ["serde"] }
 nftables = "0.6.3"
 serde.workspace = true

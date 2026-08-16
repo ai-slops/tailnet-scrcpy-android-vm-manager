@@ -46,6 +46,7 @@ pub fn enroll(
     command: &impl TailscaleCommand,
 ) -> Result<Enrollment, EnrollmentError> {
     if is_connected(command)? {
+        reconfigure(config, command)?;
         return Ok(if lock_ready(command)? {
             Enrollment::ConnectedAndSigned
         } else {
@@ -76,6 +77,25 @@ pub fn enroll(
     } else {
         Enrollment::ConnectedAwaitingSignature
     })
+}
+
+pub fn reconfigure(
+    config: &Config,
+    command: &impl TailscaleCommand,
+) -> Result<(), EnrollmentError> {
+    let args = vec![
+        "set".into(),
+        format!("--advertise-routes={}", advertised_routes(config)),
+        "--accept-dns=false".into(),
+        "--accept-routes=false".into(),
+        "--advertise-exit-node=false".into(),
+    ];
+    let output = command.output(&args)?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(EnrollmentError::Up(output_text(&output)))
+    }
 }
 
 #[must_use]
@@ -184,11 +204,13 @@ mod tests {
             },
             android_vms: vec![AndroidVmConfig {
                 name: "android-game-01".into(),
+                labels: vec!["game".into()],
                 address: "10.80.0.2".parse().unwrap(),
                 base_image: "/var/lib/tailnet-android-vm-manager/images/android-base.qcow2".into(),
                 adb_public_key_files: vec![],
                 vcpus: 4,
                 memory_mib: 4096,
+                autostart: false,
             }],
             network: NetworkConfig::default(),
             storage: StorageConfig::default(),
@@ -215,5 +237,22 @@ mod tests {
         let calls = f.calls.lock().unwrap();
         assert!(calls[1].contains(&"--advertise-routes=10.80.0.2/32".into()));
         assert!(!calls[1].iter().any(|a| a.contains("secret")));
+    }
+
+    #[test]
+    fn reconfigures_routes_without_auth_key() {
+        let f = Fake {
+            outputs: Mutex::new(VecDeque::from([out(true, "")])),
+            calls: Mutex::new(vec![]),
+        };
+        reconfigure(&config(Path::new("/missing")), &f).unwrap();
+        let calls = f.calls.lock().unwrap();
+        assert_eq!(calls[0][0], "set");
+        assert!(calls[0].contains(&"--advertise-routes=10.80.0.2/32".into()));
+        assert!(
+            !calls[0]
+                .iter()
+                .any(|argument| argument.contains("auth-key"))
+        );
     }
 }
