@@ -1,176 +1,117 @@
 # Security Model
 
-## 1. Security objectives
+## Security objectives
 
-The system must provide:
+The system must:
 
-1. operator-controlled admission to the overlay network;
-2. authorization independent of Tailscale identity and policy services;
-3. isolation between the tailnet, host, and Android guest networks;
-4. explicit, revocable device-to-VM control permission;
-5. protection of persistent guest data and device credentials; and
-6. auditable security-sensitive state changes.
+1. authorize Android control with project-managed ADB public keys;
+2. keep VM administration separate from the Android data path;
+3. isolate the tailnet, KVM host, and Android guest networks;
+4. minimize adbd exposure with explicit source-to-guest mappings;
+5. support independent, prompt credential revocation; and
+6. protect persistent guest data and security-sensitive audit records.
 
-## 2. Threat model
+## Threat model
 
-### In scope
+In scope are a compromised or malicious Tailscale coordination plane, widened
+Tailscale policy, another tailnet node scanning reachable addresses, a lost iOS
+controller, a malicious guest, stale router state, malformed future Manager API
+input, and stolen VM disks or backups.
 
-- Compromise or malicious operation of Tailscale's coordination infrastructure
-- Unauthorized users authenticating to the operator's Tailscale account
-- Accidental or malicious widening of Tailscale Grants
-- Network scanning from another tailnet device
-- A lost or stolen authorized iOS device
-- A malicious or compromised Android guest
-- Malformed Manager API input
-- Stale router mappings after a crash
-- Theft of VM disk files or database backups
+Full KVM host or kernel compromise, extraction of keys from a fully compromised
+authorized controller, hypervisor side channels, malicious firmware, and
+Tailscale/DERP availability are outside the MVP threat model.
 
-### Out of scope for the MVP
+## Trust boundaries
 
-- Full compromise of the KVM host or its kernel
-- Extraction of keys from a fully compromised authorized client device
-- Side-channel attacks between co-resident VMs
-- Malicious host firmware or hypervisor supply-chain compromise
-- Availability of Tailscale's coordination or DERP infrastructure
+### Tailscale transport
 
-## 3. Trust boundaries
+Tailscale supplies encrypted peer transport, address assignment, and route
+coordination. Its identities, tags, Grants, IP assignments, and `whois` output
+are not authorization evidence for Android or manager operations.
 
-### 3.1 Tailnet admission
+The router source allowlist reduces the number of nodes that can reach an adbd
+socket during normal operation. It is not independent authentication because a
+compromised coordination plane may manipulate peer identity, policy, or address
+assignment. Route approval and Tailscale policy are defense in depth.
 
-Tailnet Lock is the only Tailscale feature treated as a security root. Every
-router VM and iOS control node must carry a node-key signature rooted in
-operator-managed Tailnet Lock keys. The KVM host is not a tailnet node.
+### Android control
 
-Grants are defense in depth. They are not the local application's authorization
-database, and a Tailscale user name, device name, tag, IP address, or `whois`
-response must not create a VM permission.
+ADB public-key challenge-response is the authoritative boundary compatible with
+Scrcpy Remote. A unique public-key fingerprint is scoped to each VM in the local
+configuration or future database. The private key remains on the iOS device.
+Shared client keys are prohibited because they prevent independent audit and
+revocation.
 
-### 3.2 VM control authorization
+ADB grants broad guest control, including shell and package operations. It must
+not be described as scrcpy-only permission.
 
-ADB public-key authentication is the protocol-compatible second boundary for
-Scrcpy Remote. Authorization is granted to the fingerprint of a public key and
-is scoped to a VM in the local database.
+### Host management
 
-The ADB private key must remain on the iOS device. The server stores only its
-public key and fingerprint. A shared key across multiple client devices is not
-permitted because it prevents independent audit and revocation.
+`hostctl` runs locally on the KVM host. An iOS operator may reach it through
+key-authenticated SSH; SSH host and client key validation form the remote
+management boundary. The Android tailnet route exposes neither SSH nor a
+manager port.
 
-ADB authorization grants broad control of the guest. It is not an application-
-level sandbox and must not be described as scrcpy-only permission.
+A future web UI/API must have independently reviewed authentication, CSRF and
+session handling, authorization, audit, and privilege separation. If it is
+network-exposed, prefer a separate management network or independent WireGuard
+or mTLS credentials. Being a Tailscale node alone must not grant manager access.
 
-### 3.3 Management clients
+## Coordination-plane compromise
 
-If a management UI or native enrollment client is added, it must authenticate
-with a project-controlled protocol such as mTLS. That credential is separate
-from the ADB key unless an explicit, reviewed binding protocol is designed.
+If Tailscale's official infrastructure is compromised, assume the attacker can
+introduce or remap nodes, widen distributed packet policy, and create network
+reachability to advertised Android endpoints. Consequently, neither the router
+source IP nor tailnet membership is a trustworthy identity in that scenario.
 
-## 4. Control-plane compromise analysis
+The attacker still cannot normally complete Android's ADB authentication
+without an authorized controller private key. This preserves control
+authorization, but not perfect network isolation. Remaining risks include:
 
-Under the assumed Tailscale control-plane compromise:
+- denial of service and route disruption;
+- scanning and traffic delivery to TCP 5555;
+- exploitation of a remotely reachable adbd vulnerability before ADB
+  authentication; and
+- compromise of an already authorized iOS controller.
 
-- an attacker cannot introduce a new usable WireGuard node without a valid
-  Tailnet Lock signature;
-- Grants and Tailscale-supplied identity metadata are not sufficient evidence
-  of VM authorization;
-- router-local firewall rules expose only mapped Android TCP 5555 endpoints;
-- an ADB session still requires a locally registered public key; and
-- the local permission database, not the Tailscale control plane, decides which
-  key may control which VM.
+Keep Android and adbd patched, expose only TCP 5555 to selected `/32`
+destinations, and remove stale mappings promptly.
 
-The dedicated tailnet is important. Only the host, approved control devices, and
-signing devices should be admitted. This reduces the risk that an already-signed
-but lower-trust node benefits from a maliciously widened packet filter.
-
-## 5. Key management
-
-### Tailnet Lock
-
-- Configure at least two signing nodes.
-- Do not make ordinary iOS control devices signing nodes.
-- Keep at least one signing node offline during normal operation.
-- Store disablement secrets encrypted and offline in separate locations.
-- Do not use signed reusable auth keys for automatic enrollment.
-- Revoke a lost node's Tailnet Lock key promptly.
-
-### ADB keys
-
-- Generate a unique key pair per iOS device.
-- Record and confirm the public-key fingerprint during enrollment.
-- Never upload or back up client private keys to the Manager.
-- Store only public material in the Manager database.
-- Remove revoked keys from guest authorization and terminate matching ADB
-  sessions.
-- Confirm the exact Scrcpy Remote import/export key format during the
-  compatibility spike.
-
-### Management mTLS
-
-If implemented later, use an offline root CA and per-device non-exportable
-private keys where the platform supports them. mTLS must not be placed in the
-Scrcpy Remote data path unless the application explicitly supports it.
-
-## 6. Firewall invariants
-
-The router appliance and isolated host network must preserve these invariants
-even when Tailscale Grants are overly permissive:
+## Firewall invariants
 
 ```text
-public/LAN -> management ports       DENY
+public/LAN -> host management        DENY except explicitly managed SSH path
 public/LAN -> Android guest subnet   DENY
 router tailscale0 -> VM subnet       DENY by default
-mapped controller -> selected ADB    ALLOW while authorized
+mapped source -> selected ADB        ALLOW TCP 5555
 VM -> host management plane          DENY
 VM -> other VM                       DENY
 VM -> internet                       ALLOW through controlled NAT
 ```
 
-Rules must bind to explicit interfaces, addresses, protocols, ports, and VM
-destinations. No wildcard DNAT from the tailnet to the guest network is allowed.
+Rules bind explicit interfaces, addresses, protocols, ports, and destinations.
+No wildcard forwarding or subnet-wide advertisement is allowed.
 
-## 7. Revocation
+## Key management and revocation
 
-Revocation of an iOS control device is complete only after all of the following:
+For ADB, generate one key pair per physical iOS device, confirm its public-key
+fingerprint during enrollment, and never ingest the private key into the
+manager. Revocation removes the router mapping, terminates existing ADB
+sessions, removes the public key from every guest, and records an audit event.
+Removing the Tailscale machine is useful cleanup but does not replace ADB-key
+revocation.
 
-1. mark the device `revoked` in the local database;
-2. remove every router source-to-guest mapping for the device;
-3. terminate its active ADB connections;
-4. remove its ADB public key from every authorized guest;
-5. remove the device from the tailnet and revoke its Tailnet Lock key; and
-6. append an immutable audit event.
+For SSH, use unique operator keys, verify the host key, disable password login,
+and restrict administrative accounts and `sudo`. A lost management device
+requires removal of its SSH public key independently of its ADB and Tailscale
+state.
 
-Local ADB revocation and Tailnet Lock revocation are intentionally independent.
-Either boundary should block useful VM control.
+Sensitive data includes VM disks and snapshots, ADB permission mappings, SSH
+authorized keys, future Manager server keys, and audit records. Encrypt backups
+and keep any future offline CA key outside the host backup set.
 
-The router additionally limits traffic to configured controller Tailscale IPv4
-addresses in nftables. This is a defense-in-depth operational restriction, not
-an independent identity proof: without Tailnet Lock, a compromised Tailscale
-control plane could change the node-key-to-IP mapping supplied to the router.
-
-## 8. Sensitive data
-
-Sensitive server-side material includes:
-
-- VM disks and snapshots;
-- ADB public keys and their VM permission mappings;
-- Manager server keys, if introduced;
-- Tailnet Lock state on signing nodes;
-- disablement secrets; and
-- audit records that describe device activity.
-
-Backups must be encrypted. Disablement secrets and an offline CA private key must
-not be stored in the same backup set as the KVM host.
-
-## 9. Audit events
-
-At minimum, record:
-
-- device enrollment, activation, and revocation;
-- ADB fingerprint changes;
-- permission grants and removals;
-- VM creation, reset, snapshot, and deletion;
-- router mapping changes and forced ADB-session termination;
-- host-agent reconciliation changes; and
-- security check failures.
-
-Do not record ADB private keys, session payloads, clipboard contents, or guest
-screen contents.
+At minimum, audit device enrollment and revocation, ADB fingerprint changes,
+permission changes, VM lifecycle and snapshot actions, router mapping changes,
+forced ADB-session termination, reconciliation changes, and security check
+failures. Never record private keys, ADB payloads, clipboard data, or screens.

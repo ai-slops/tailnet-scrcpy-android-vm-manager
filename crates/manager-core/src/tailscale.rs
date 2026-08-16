@@ -10,8 +10,7 @@ use thiserror::Error;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Enrollment {
     AlreadyConnected,
-    ConnectedAwaitingSignature,
-    ConnectedAndSigned,
+    Connected,
 }
 
 #[derive(Debug, Error)]
@@ -47,11 +46,7 @@ pub fn enroll(
 ) -> Result<Enrollment, EnrollmentError> {
     if is_connected(command)? {
         reconfigure(config, command)?;
-        return Ok(if lock_ready(command)? {
-            Enrollment::ConnectedAndSigned
-        } else {
-            Enrollment::AlreadyConnected
-        });
+        return Ok(Enrollment::AlreadyConnected);
     }
     validate_auth_key_file(&config.router.auth_key_file)?;
     let args = vec![
@@ -72,11 +67,7 @@ pub fn enroll(
     if !output.status.success() {
         return Err(EnrollmentError::Up(output_text(&output)));
     }
-    Ok(if lock_ready(command)? {
-        Enrollment::ConnectedAndSigned
-    } else {
-        Enrollment::ConnectedAwaitingSignature
-    })
+    Ok(Enrollment::Connected)
 }
 
 pub fn reconfigure(
@@ -121,13 +112,6 @@ fn is_connected(command: &impl TailscaleCommand) -> Result<bool, EnrollmentError
         && String::from_utf8_lossy(&output.stdout)
             .lines()
             .any(|line| !line.trim().is_empty()))
-}
-fn lock_ready(command: &impl TailscaleCommand) -> Result<bool, EnrollmentError> {
-    let output = command.output(&["lock".into(), "status".into()])?;
-    let text = output_text(&output);
-    Ok(output.status.success()
-        && text.contains("Tailnet Lock is ENABLED.")
-        && text.contains("This node is accessible under Tailnet Lock."))
 }
 fn validate_auth_key_file(path: &Path) -> Result<(), EnrollmentError> {
     let metadata =
@@ -222,17 +206,10 @@ mod tests {
         fs::write(&p, "secret").unwrap();
         fs::set_permissions(&p, Permissions::from_mode(0o600)).unwrap();
         let f = Fake {
-            outputs: Mutex::new(VecDeque::from([
-                out(false, ""),
-                out(true, ""),
-                out(true, "Tailnet Lock is ENABLED.\nLocked out."),
-            ])),
+            outputs: Mutex::new(VecDeque::from([out(false, ""), out(true, "")])),
             calls: Mutex::new(vec![]),
         };
-        assert_eq!(
-            enroll(&config(&p), &f).unwrap(),
-            Enrollment::ConnectedAwaitingSignature
-        );
+        assert_eq!(enroll(&config(&p), &f).unwrap(), Enrollment::Connected);
         fs::remove_file(&p).unwrap();
         let calls = f.calls.lock().unwrap();
         assert!(calls[1].contains(&"--advertise-routes=10.80.0.2/32".into()));

@@ -114,9 +114,9 @@ The hostctl check additionally validates QEMU, libvirt, nftables, cgroup v2,
 and current-process KVM device access. It deliberately does not require
 Tailscale on the KVM host.
 
-This check deliberately does not inspect Tailnet Lock or router policy because
-the KVM host is not a tailnet node. Run `routerctl preflight` inside the router
-appliance after enrollment and manual signing, as described in
+This check deliberately does not inspect Tailscale or router policy because the
+KVM host is not a tailnet node. Run `routerctl preflight` inside the router
+appliance after enrollment, as described in
 [Tailscale Provisioning](tailscale-provisioning.md).
 
 ## Optional Android Emulator spike

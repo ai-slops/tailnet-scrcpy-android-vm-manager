@@ -88,8 +88,7 @@ Exit criteria:
 
 - Add encrypted backup and documented recovery procedures.
 - Add disk-space and resource-pressure guards.
-- Add Tailnet Lock readiness checks without making Tailscale identity an
-  authorization dependency.
+- Harden SSH administration and document recovery of management access.
 - Add audit export and log retention settings.
 - Add upgrade and rollback procedures for schema, images, and services.
 - Perform threat-model and privilege-boundary review.
@@ -103,7 +102,7 @@ The MVP requires:
 - integration tests against libvirt, nftables, and a disposable Android VM;
 - negative network tests from LAN, unauthorized tailnet nodes, and other guests;
 - a disposable local Headscale test for enrollment, `/32` route approval, and
-  controller source-IP allowlisting (without Tailnet Lock coverage);
+  controller source-IP allowlisting;
 - crash-recovery tests for API, agent, router, and host restarts;
 - revocation tests with an established ADB connection; and
 - a manual iOS compatibility suite for every supported Scrcpy Remote update.

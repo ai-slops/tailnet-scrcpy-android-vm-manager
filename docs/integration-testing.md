@@ -50,11 +50,10 @@ generated typed nftables controller/guest set, reply traffic, and denial of a
 second enrolled node. It therefore verifies that tailnet membership alone does
 not grant access to the simulated Android endpoint.
 
-It does **not** test Tailnet Lock. Headscale is a compatible coordination
-server, not an implementation of Tailscale's Tailnet Lock trust root. Tailnet
-Lock signing and revocation require a separate acceptance test against the
-dedicated production Tailscale tailnet. The test also does not cover libvirt,
-Android boot, ADB authorization, Scrcpy Remote, or GPU acceleration.
+It does not cover libvirt, Android boot, ADB authorization, Scrcpy Remote, or
+GPU acceleration. In particular, the echo endpoint proves routing policy only;
+the real Android acceptance test must separately prove that an unregistered ADB
+private key is rejected.
 
 See the [Headscale route documentation](https://headscale.net/0.27.0/ref/routes/)
 and [container documentation](https://headscale.net/stable/setup/install/container/)

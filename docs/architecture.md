@@ -1,36 +1,41 @@
 # Architecture
 
-## System context
+## System context and role separation
 
 ```text
- operator-held Tailnet Lock keys
-              |
-              | sign node keys
-              v
- Scrcpy Remote iOS === dedicated tailnet === Tailnet router appliance
-   Tailscale + ADB key                         tailscaled + nftables
-                                                        |
-                                                advertises explicit /32s
-                                                        |
-                                                isolated VM network
-                                                        |
-                                              persistent Android VMs
-                                                authenticated adbd
+ Android control plane
+ Scrcpy Remote on iOS -- Tailscale transport --> isolated router VM
+        ADB private key                         tailscaled + nftables
+                                                       |
+                                               explicit guest /32 routes
+                                                       |
+                                             persistent Android VMs
+                                               authenticated adbd
 
- Linux KVM host: libvirt + manager services (not a tailnet node)
+ Management plane
+ iOS SSH client -- key-authenticated SSH --> Linux KVM host
+                                              hostctl + libvirt
+
+ Future management plane
+ browser/app -- separately authenticated API --> unprivileged manager
+                                                      |
+                                              narrow local host agent
 ```
 
-The router appliance is the only server-side tailnet node. The current
-implementation generates a small persistent libvirt VM, but the security
-boundary permits a separately confined container in a future deployment. It
-must have its own Tailscale state, network namespace, and least-privilege
-forwarding capabilities; it must never share a host `tailscaled` instance.
+These planes serve different purposes and do not grant authority to each other:
 
-Android guests contain no Tailscale client. Each persistent guest has a fixed
-private IPv4 address. The router advertises only the explicitly configured
-guest `/32`s and accepts only mapped controller-IP-to-guest TCP 5555 traffic.
-Scrcpy Remote therefore connects directly to the Android address rather than a
-port on the KVM host.
+- Tailscale transports ADB traffic and coordinates routes.
+- Android `adbd` verifies whether a Scrcpy Remote device may control a guest.
+- The host CLI controls inventory and VM lifecycle. It runs locally, either at
+  the host console or through SSH.
+- A future web UI/API is a management product surface with its own reviewed
+  authentication and authorization. Tailscale identity must not silently become
+  its authorization database.
+
+The KVM host and Android guests do not run Tailscale. The dedicated router VM
+has its own Tailscale state and network namespace, advertises only configured
+guest `/32`s, and forwards only mapped source-to-guest TCP 5555 flows. Scrcpy
+Remote connects to the Android address, never a listener on the KVM host.
 
 ## Components
 
@@ -38,96 +43,76 @@ port on the KVM host.
 
 `manager-core` provides validated configuration and bounded primitives for ADB
 public keys, router policy, VM lifecycle, hibernation, and stopped-state
-snapshots. `hostctl` exposes the implemented host administration operations.
-The KVM host does not run Tailscale and its management surface is local-only.
+snapshots. `hostctl` exposes host administration operations. There is currently
+no manager network API: remote operators use an ordinary SSH client to execute
+the same local CLI.
 
-A future manager service will own desired state, device enrollment,
+A future manager service may own desired state, device enrollment,
 device-to-VM permission, reconciliation, and audit records. Network-facing code
-must remain unprivileged. Privileged libvirt, storage, and firewall operations
-must be exposed through a narrow local interface with structured arguments,
-never arbitrary commands or caller-selected paths.
+must remain unprivileged. Privileged libvirt and storage operations must use a
+narrow local interface with structured arguments, never arbitrary commands or
+caller-selected paths.
 
 ### Tailnet router appliance
 
-The router holds its own ordinary Tailscale auth key and persistent node state.
-After automatic enrollment, it remains unusable until a trusted signing node
-manually signs it under Tailnet Lock. Route approval is a separate manual
-control.
-
-`routerctl`:
-
-- enrolls the node and advertises deduplicated guest `/32`s;
-- generates and atomically installs the router-owned nftables table; and
-- checks IPv4 forwarding and Tailnet Lock readiness.
+The router holds an ordinary Tailscale auth key for initial enrollment and
+persistent node state. Route approval remains an external administrative step.
+`routerctl` enrolls or reconfigures the node, advertises deduplicated guest
+`/32`s, atomically installs the router-owned nftables table, and checks network
+readiness.
 
 The forwarding chain is fail-closed. A typed libnftables JSON ruleset stores
 each `(Tailscale source IPv4, Android destination IPv4)` pair in a concatenated
-set, so multiple approved phones do not duplicate rule structure. It permits
-only set members on TCP 5555, established replies and guest Internet NAT, and
-drops every other forwarded packet.
+set. It permits only set members on TCP 5555, established replies, and guest
+Internet NAT, and drops every other forwarded packet.
+
+The source allowlist narrows exposure and helps operational revocation. It is
+not a durable identity proof: a compromised coordination plane may change which
+peer receives an allowed address.
 
 ### Android VM runtime
 
 Libvirt manages persistent QEMU/KVM guests. Each configured VM has a stable
 domain name and private address, a project-approved image lineage, persistent
 qcow2 storage, and an isolated virtual NIC. Managed save provides SSD-backed
-hibernation. Internal qcow2 snapshots are permitted only when fully stopped.
+hibernation. Internal qcow2 snapshots are allowed only while fully stopped.
 
-Authenticated `adbd` is the protocol-compatible authorization boundary used by
-Scrcpy Remote. A controller permission grants broad ADB authority inside that
-VM; it is not a scrcpy-only sandbox.
-
-## Authorization model
-
-Network admission and VM authorization are independent:
-
-1. Tailnet Lock admits the signed router and iOS node to the WireGuard overlay.
-2. Router-local nftables maps the controller's tailnet IPv4 address to one
-   Android address. This is a narrow operational allowlist, not durable
-   identity by itself.
-3. Android `adbd` authenticates the controller's unique ADB private key against
-   project-managed public-key authorization.
-4. The future local database maps the ADB public-key fingerprint to VM
-   permissions and remains independent of Tailscale identity APIs.
-
-A usable attack therefore requires passing both the operator-controlled
-network admission boundary and the project-controlled ADB authorization
-boundary. Tailscale Grants and route approval remain defense in depth.
+Authenticated `adbd` is the authoritative Scrcpy Remote control boundary. Each
+iOS controller has a unique ADB key, and only its public key is installed in an
+authorized guest. A controller permission grants broad ADB authority inside
+that VM; it is not a scrcpy-only sandbox.
 
 ## Connection flow
 
 ```text
-1. Enroll router/iOS nodes with ordinary Tailscale auth.
-2. Manually sign their node keys from a trusted Tailnet Lock signing node.
-3. Approve only the router's configured Android /32 routes.
-4. Register the iOS device's ADB public key and grant access to a VM.
-5. Reconcile the guest ADB key and router source-IP mapping.
-6. Start or restore the persistent Android VM.
-7. Scrcpy Remote connects to <android-private-ip>:5555 through Tailscale.
-8. Router nftables checks source, destination, and port.
-9. Android adbd challenges the device's ADB key.
+1. Enroll the router and Scrcpy Remote node with ordinary Tailscale enrollment.
+2. Approve only the router's configured Android /32 routes.
+3. Register the iOS device's ADB public key for a VM.
+4. Add the observed Scrcpy Remote source address to the router mapping.
+5. Start or restore the persistent Android VM.
+6. Scrcpy Remote connects to <android-private-ip>:5555 through Tailscale.
+7. Router nftables checks source, destination, and port.
+8. Android adbd challenges the controller's ADB private key.
 ```
 
+Steps 1, 2, and 7 provide reachability and exposure reduction. Step 8 grants
+Android control. If Tailscale's control plane is compromised, an attacker may
+gain network reachability to adbd but still needs an authorized ADB private key.
+Availability attacks and exploitation of a vulnerable adbd remain residual
+risks.
+
 Powering a VM off does not withdraw its persistent `/32`; connections simply
-fail while it is stopped. This avoids route approval churn when game VMs are
-started and stopped frequently.
+fail while it is stopped. This avoids route approval churn for frequently
+started game VMs.
 
 ## Desired-state reconciliation
 
-The future manager must compare its local database with libvirt domains,
+The future manager compares its local database with libvirt domains,
 managed-save state, snapshots, router mappings, and guest ADB public keys.
-Unknown mappings are removed and revoked keys are removed from guests. Runtime
-state is derived from the database; Tailscale identity or `whois` output must
-never create a device permission.
+Unknown mappings and revoked guest keys are removed. Tailscale identity or
+`whois` output must never create a device permission.
 
 The likely single-host schema contains `devices`, `vms`, `vm_permissions`, and
-`audit_events`. A separate endpoint-lease or host-port allocation model is not
-part of the direct routed design.
-
-## Portability boundary
-
-The domain model uses project-owned device credentials rather than Tailscale
-users or node identities. A network-admission provider may report readiness and
-addresses, but it cannot grant VM permission. This keeps a future Headscale,
-plain WireGuard, or private-LAN deployment possible without replacing the ADB
-authorization model.
+`audit_events`. The domain model uses project-owned ADB credentials rather than
+Tailscale users or nodes, keeping a future Headscale, plain WireGuard, or LAN
+transport possible without replacing Android authorization.

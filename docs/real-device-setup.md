@@ -13,8 +13,7 @@ for the future manager API or authorization database.
 - localhost-only SPICE graphics for initial Android setup and ADB approval;
 - typed libnftables JSON with a `(controller source, Android guest)` set;
 - guest Internet NAT, default-deny forwarding, and TCP 5555-only tailnet access;
-- ordinary Tailscale auth-key enrollment followed by manual Tailnet Lock
-  signing; and
+- ordinary Tailscale auth-key enrollment; and
 - validation and rendering of per-VM ADB public-key bundles.
 
 The repository does not redistribute an Android image. Supply a legally
@@ -71,20 +70,18 @@ forwarding, static guest leases, and the default-deny firewall. Inspect progress
 with `just router-console` and exit with `Ctrl+]`. Find its uplink address with
 `virsh domifaddr tailnet-android-router --source lease`, then SSH as `ubuntu`.
 
-The seed contains the public SSH key, but no private key, Tailscale auth key, or
-Tailnet Lock signing material. Inside the router, install an ordinary one-off
-auth key at the configured path and enroll:
+The seed contains the public SSH key, but no private key or Tailscale auth key.
+Inside the router, install an ordinary one-off auth key at the configured path
+and enroll:
 
 ~~~shell
 sudo install -d -m 0700 /etc/tailnet-android-vm-manager/secrets
 sudo install -m 0600 /dev/stdin /etc/tailnet-android-vm-manager/secrets/tailscale-authkey
 sudo routerctl enroll
-tailscale lock status
 ~~~
 
-Run the displayed signing command on a trusted Tailnet Lock signing node, then
-approve only the advertised Android `/32` routes. Do not use a wrapped/signed
-auth key. Reapply `routerctl firewall-apply` whenever source mappings change.
+Approve only the advertised Android `/32` routes. Reapply `routerctl
+firewall-apply` whenever source mappings change.
 
 ## 3. Create and bootstrap Android
 
@@ -128,16 +125,15 @@ not the same node or source address as the official Tailscale iOS VPN app.
 
 Use an ordinary, non-ephemeral auth key for the first manual enrollment. Avoid
 giving the app a broad OAuth client secret merely to automate key creation.
-After Scrcpy Remote joins, find its machine in the Tailscale admin console. It
-should be locked out; manually sign that exact node from a trusted Tailnet Lock
-signing node. Record the embedded tsnet node's IPv4 and add it to the applicable
-`sources` array, then reapply the router firewall.
+After Scrcpy Remote joins, find its machine in the Tailscale admin console.
+Record the embedded tsnet node's IPv4 and add it to the applicable `sources`
+array, then reapply the router firewall.
 
 If instead Scrcpy Remote opens a normal socket through the system Tailscale VPN,
 the source is the official Tailscale iOS app's node. Treat these as two separate
 modes and confirm the observed source with router counters or logs before
 finalizing the allowlist. Do not allow both addresses unless both paths were
-deliberately enrolled, signed, and tested.
+deliberately enrolled and tested.
 
 In Scrcpy Remote choose ADB mode and connect to the Android address, not the
 router or KVM host:
@@ -155,7 +151,7 @@ scrcpy2://10.80.0.2:5555?bit-rate=4M&max-size=1080
 
 Run `routerctl preflight` before testing. It now checks forwarding, both router
 interfaces, the guest address, `tailscale0`, the installed nftables table,
-dnsmasq, and Tailnet Lock.
+and dnsmasq.
 
 ## Acceptance checks
 
@@ -170,7 +166,7 @@ The first setup is complete only when all of these pass:
 6. Hibernation restores the running game without consuming host RAM while off.
 7. A stopped-state snapshot can be created and reverted safely.
 8. Reopening Scrcpy Remote reuses the same embedded machine identity and source
-   IP; clearing app data creates a new locked-out node that must be signed again.
+   IP; clearing app data creates a new node whose address must be allowed again.
 
 Do not expose the SPICE listener beyond localhost, advertise the entire guest
 subnet, disable `ro.adb.secure`, or place the KVM host in the tailnet.

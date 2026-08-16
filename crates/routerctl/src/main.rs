@@ -36,14 +36,9 @@ fn main() -> anyhow::Result<ExitCode> {
         .with_context(|| format!("failed to load {}", cli.config.display()))?;
     match cli.command {
         Command::Enroll => match tailscale::enroll(&config, &SystemTailscale)? {
-            Enrollment::ConnectedAndSigned => {
-                println!("Router is connected and signed by Tailnet Lock.")
-            }
-            Enrollment::AlreadyConnected | Enrollment::ConnectedAwaitingSignature => {
-                println!("Router is connected but requires a Tailnet Lock signature.");
-                println!(
-                    "Run `tailscale lock status` here and its sign command on a trusted signing node."
-                );
+            Enrollment::Connected => println!("Router enrolled in the tailnet."),
+            Enrollment::AlreadyConnected => {
+                println!("Router was already connected; settings reapplied.")
             }
         },
         Command::Reconfigure => {
@@ -92,14 +87,6 @@ fn main() -> anyhow::Result<ExitCode> {
             let firewall =
                 command_succeeds("nft", &["list", "table", "inet", "tailnet_android_router"]);
             let dnsmasq = command_succeeds("systemctl", &["is-active", "--quiet", "dnsmasq"]);
-            let lock = std::process::Command::new("tailscale")
-                .args(["lock", "status"])
-                .output()
-                .is_ok_and(|o| {
-                    o.status.success()
-                        && String::from_utf8_lossy(&o.stdout)
-                            .contains("This node is accessible under Tailnet Lock.")
-                });
             println!(
                 "[{}] ipv4-forwarding",
                 if forwarding { "PASS" } else { "FAIL" }
@@ -113,8 +100,7 @@ fn main() -> anyhow::Result<ExitCode> {
             ] {
                 println!("[{}] {name}", if passed { "PASS" } else { "FAIL" });
             }
-            println!("[{}] tailnet-lock", if lock { "PASS" } else { "FAIL" });
-            if ![forwarding, uplink, guest, tailnet, firewall, dnsmasq, lock]
+            if ![forwarding, uplink, guest, tailnet, firewall, dnsmasq]
                 .into_iter()
                 .all(|passed| passed)
             {

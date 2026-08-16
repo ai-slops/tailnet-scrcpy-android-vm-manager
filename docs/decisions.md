@@ -6,15 +6,15 @@ replacement rationale.
 
 ## Accepted
 
-### ADR-001: Use a dedicated Tailnet Lock-enabled tailnet
+### ADR-001: Treat Tailscale as transport, not authorization
 
-**Decision:** The deployment uses a dedicated Tailscale Personal tailnet. Only
-the isolated router appliance, approved control devices, and signing devices
-join it. The KVM host does not join.
+**Decision:** A dedicated Tailscale tailnet carries Scrcpy Remote traffic to the
+isolated router appliance. The KVM host does not join. Tailscale node identity
+and IP address never grant Android or manager authorization.
 
-**Rationale:** Tailnet Lock keeps node-key admission under operator-controlled
-cryptographic authority even if Tailscale's control plane is compromised. A
-dedicated tailnet prevents unrelated signed nodes from sharing the trust domain.
+**Rationale:** Android's ADB challenge-response provides a client-key boundary
+compatible with Scrcpy Remote. A compromised coordination plane may create
+reachability, but it does not possess an approved ADB private key.
 
 ### ADR-002: Do not install Tailscale in Android guests
 
@@ -55,8 +55,9 @@ host exposes no tailnet listener and allocates no proxy port.
 
 **Rationale:** Direct routing matches the iOS client's supported Tailscale path,
 keeps the KVM host outside the tailnet, and removes a per-session proxy and port
-allocation subsystem. Router-local source allowlisting and Android ADB keys
-retain the two independent authorization checks.
+allocation subsystem. Router-local source allowlisting narrows exposure, while
+Android ADB keys independently authenticate control. Source IP is not an
+independent identity proof.
 
 ### ADR-006: Use persistent qcow2 overlays
 
@@ -81,6 +82,10 @@ narrow privileged host agent.
 
 **Rationale:** A network-facing parsing error must not directly become arbitrary
 root command execution.
+
+**Current scope:** No network API is exposed. Operators run `hostctl` locally,
+including through key-authenticated SSH from an iOS SSH client. A future web UI
+must use a separately reviewed management authentication mechanism.
 
 ### ADR-009: Use SQLite for the single-host MVP
 

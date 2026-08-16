@@ -10,10 +10,12 @@ The project is designed around a deliberately narrow trust model:
 - Only a dedicated Tailnet router appliance joins the tailnet; the current
   implementation uses an isolated VM. The KVM host and Android guests do not
   run Tailscale.
-- Tailnet Lock controls which physical devices may join that tailnet.
-- The Tailscale control plane is not trusted to authorize access by itself.
-- Android Debug Bridge (ADB) public-key authentication provides an independent
-  second authorization boundary for scrcpy control.
+- Tailscale provides transport and route coordination, not Android control
+  authorization.
+- Android Debug Bridge (ADB) public-key authentication is the authoritative
+  authorization boundary for scrcpy control.
+- VM administration is a separate plane: run the local CLI directly or through
+  an SSH client. A future web UI must use separate management authorization.
 - A local database on the KVM host is the source of truth for device-to-VM
   permissions.
 

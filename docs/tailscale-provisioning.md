@@ -29,14 +29,13 @@ It caches the official Ubuntu 24.04 image, creates the overlay and NoCloud seed,
 installs `routerctl` and its configuration, and starts both the isolated network
 and two-NIC domain. Cloud-init installs and configures Tailscale, nftables,
 dnsmasq, netplan, and persistent forwarding. Existing artifacts are never
-overwritten. Only the public SSH key is embedded; no Tailscale secret or
-Tailnet Lock signing material is copied into the VM definition or seed.
+overwritten. Only the public SSH key is embedded; no Tailscale secret is copied
+into the VM definition or seed.
 
 ## Auth key and enrollment
 
-Create an ordinary, preferably one-off and non-ephemeral, auth key. Do not sign
-or wrap the auth key with Tailnet Lock. Store it only inside the router VM as a
-regular file with mode `0600`:
+Create an ordinary, preferably one-off and non-ephemeral, auth key. Store it
+only inside the router VM as a regular file with mode `0600`:
 
 ~~~shell
 sudo install -d -m 0700 /etc/tailnet-android-vm-manager/secrets
@@ -58,17 +57,7 @@ acceptance, and posture reporting. It advertises only the deduplicated Android
 guest `/32` routes derived from `[[router.access]]`. If already connected, it
 does not access or reuse the auth key.
 
-## Manual Tailnet Lock signature and route approval
-
-The joined router is expected to remain locked out. Run this inside it:
-
-~~~shell
-tailscale lock status
-~~~
-
-Run the displayed signing command on a separate trusted signing node. The
-router VM, KVM host, Android guests, and ordinary iOS controllers must not be
-signing nodes.
+## Route approval
 
 Approve the advertised `/32` routes in the Tailscale admin console. Route
 approval and Grants are defense in depth; router-local nftables remains the
@@ -103,17 +92,17 @@ routes together. Tailscale's `set` command changes only explicitly supplied
 settings and does not require the enrollment auth key.
 
 Scrcpy Remote connects directly to the persistent Android address and TCP port
-5555, for example `10.80.0.2:5555`. Tailnet Lock admits the controller and
-router keys, route approval makes the `/32` reachable, router nftables checks
-the controller IP mapping, and Android ADB verifies the controller's private
-key.
+5555, for example `10.80.0.2:5555`. Route approval makes the `/32` reachable,
+router nftables checks the controller IP mapping, and Android ADB verifies the
+controller's private key. Only the last step authorizes Android control.
 
 ## Revocation
 
 1. Remove the controller-to-guest entry from `[[router.access]]`.
 2. Reapply router nftables and terminate existing forwarding state.
 3. Remove the controller ADB public key from the Android VM.
-4. Remove the controller from Tailscale and revoke its Tailnet Lock key.
+4. Remove the controller machine from Tailscale.
 
-Tailnet Lock, router forwarding, and ADB authorization are separate boundaries;
-revocation must update all three.
+Router forwarding and ADB authorization are separate controls; revocation must
+update both. Removing the Tailscale machine reduces exposure but is not a
+substitute for removing its ADB key.

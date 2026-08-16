@@ -6,10 +6,11 @@ The system manages persistent Android virtual machines on a KVM-capable Linux
 server and makes each VM controllable from the Scrcpy Remote iOS app over a
 Tailscale network.
 
-The primary security objective is to retain control over device admission even
-if Tailscale's official control-plane infrastructure is compromised. A device
-that has not been approved by the operator must not be able to establish a
-tailnet data-plane connection to the host.
+Android control authorization remains project-controlled even if Tailscale's
+official control plane is compromised. Tailscale provides reachability; a
+controller must still prove possession of an authorized ADB private key. VM
+lifecycle administration is separate and initially runs locally on the host,
+optionally reached through SSH.
 
 ## 2. Confirmed product decisions
 
@@ -18,8 +19,10 @@ tailnet data-plane connection to the host.
 - Android guests do not contain a Tailscale client.
 - A dedicated minimal router VM is the only Tailscale-connected part of the VM
   network. The KVM host and Android guests do not run Tailscale.
-- The deployment uses a dedicated tailnet with Tailnet Lock enabled.
-- Tailnet Lock signing is a manual operator action.
+- Tailscale node identity, source IP allowlisting, Grants, and route approval
+  reduce exposure but do not authorize Android control.
+- Host administration uses the local CLI, directly or through key-authenticated
+  SSH. A future web UI is a separate management surface.
 - Users are not modeled. Authorization is attached directly to device
   credentials.
 - VMs are persistent.
