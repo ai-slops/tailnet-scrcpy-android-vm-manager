@@ -28,10 +28,10 @@ this project.
 
 Copy `config.example.toml` below `.local/` and edit:
 
-- `router.access[].sources`: every approved iPhone/iPad Tailscale IPv4 address;
-- `router.access[].guest`: the assigned persistent Android address;
-- `android_vms[].base_image`: an absolute immutable qcow2 path;
-- `android_vms[].adb_public_key_files`: exported Scrcpy Remote public keys; and
+- `controllers.NAME.sources`: each Scrcpy Remote Tailscale IPv4 address;
+- `controllers.NAME.adb_public_key_file`: that controller's exported public key;
+- `vms.NAME.base_image`: an absolute immutable qcow2 path;
+- optional `vms.NAME.controllers`: controller names allowed for that VM; and
 - storage paths, CPUs, and memory.
 
 Validate all three generated libvirt artifacts together:
@@ -40,12 +40,17 @@ Validate all three generated libvirt artifacts together:
 just libvirt-xml-check android-game-01 .local/phone/config.toml
 ~~~
 
-Several controller addresses can control the same VM:
+Several observed addresses can belong to one controller. Omitting `controllers`
+from a VM allows every active controller:
 
 ~~~toml
-[[router.access]]
+[controllers.my-iphone]
 sources = ["100.64.0.2", "100.64.0.3"]
-guest = "10.80.0.2"
+adb_public_key_file = "/etc/tailnet-android-vm-manager/adb-keys/my-iphone.pub"
+
+[vms.android-game-01]
+address = "10.80.0.2"
+base_image = "/var/lib/tailnet-android-vm-manager/images/android-base.qcow2"
 ~~~
 
 ## 2. Provision the isolated network and router VM
@@ -116,6 +121,35 @@ The validated bundle is available with:
 just android-adb-keys android-game-01 .local/phone/config.toml
 ~~~
 
+## Controller replacement
+
+Add the replacement as a second controller before revoking the old one:
+
+~~~toml
+[controllers.old-iphone]
+sources = ["100.64.0.2"]
+adb_public_key_file = "/etc/tailnet-android-vm-manager/adb-keys/old-iphone.pub"
+active = true
+
+[controllers.new-iphone]
+sources = ["100.64.0.9"]
+adb_public_key_file = "/etc/tailnet-android-vm-manager/adb-keys/new-iphone.pub"
+active = true
+~~~
+
+Reconcile the router, render each affected VM's desired key bundle, apply it by
+the Android image's console/bootstrap procedure, and test the new controller.
+Then set `old-iphone.active = false`, reconcile again, apply the now-reduced key
+bundle, restart `adbd`, and terminate existing ADB connections. An inactive
+controller is retained as inventory but contributes neither firewall flows nor
+ADB keys. A configuration with no active controllers is valid and fail-closed.
+
+The manager currently renders desired keys but cannot claim live guest
+application. Automated removal outside the guest requires the planned
+read-only key configuration artifact and Android init service described in the
+[architecture](architecture.md). Until the selected base image implements that
+contract, key installation and removal remain an explicit image-specific step.
+
 ## 4. Admit Scrcpy Remote's Tailscale node and connect
 
 Current Scrcpy Remote builds contain an embedded `tsnet.Server` and TCP
@@ -126,8 +160,8 @@ not the same node or source address as the official Tailscale iOS VPN app.
 Use an ordinary, non-ephemeral auth key for the first manual enrollment. Avoid
 giving the app a broad OAuth client secret merely to automate key creation.
 After Scrcpy Remote joins, find its machine in the Tailscale admin console.
-Record the embedded tsnet node's IPv4 and add it to the applicable `sources`
-array, then reapply the router firewall.
+Record the embedded tsnet node's IPv4 and add it to that controller's `sources`
+array, then reconcile the router firewall.
 
 If instead Scrcpy Remote opens a normal socket through the system Tailscale VPN,
 the source is the official Tailscale iOS app's node. Treat these as two separate

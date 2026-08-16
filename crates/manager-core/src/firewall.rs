@@ -30,14 +30,14 @@ pub fn ruleset(config: &Config, replace: bool) -> Result<Nftables<'static>, Fire
     }}}));
 
     let elements = config
-        .router
-        .access
-        .iter()
-        .flat_map(|access| {
-            access
-                .sources
-                .iter()
-                .map(|source| json!({"concat": [source.to_string(), access.guest.to_string()]}))
+        .vms
+        .values()
+        .flat_map(|vm| {
+            config.controllers_for_vm(vm).flat_map(move |controller| {
+                controller.sources.iter().map(
+                    move |source| json!({"concat": [source.to_string(), vm.address.to_string()]}),
+                )
+            })
         })
         .collect::<Vec<_>>();
     commands.push(json!({"add": {"set": {
@@ -178,11 +178,15 @@ fn prefix(network: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::ControllerConfig;
 
     #[test]
     fn renders_typed_multi_controller_set_and_fail_closed_forwarding() {
         let mut config = crate::config::tests::valid();
-        config.router.access[0]
+        config
+            .controllers
+            .get_mut("my-iphone")
+            .unwrap()
             .sources
             .push("100.64.0.3".parse().unwrap());
         let rendered = render(&config, false).unwrap();
@@ -192,5 +196,33 @@ mod tests {
         assert!(rendered.contains("\"policy\": \"drop\""));
         assert!(rendered.contains("\"masquerade\": null"));
         assert_eq!(ruleset(&config, false).unwrap().objects.len(), 9);
+    }
+
+    #[test]
+    fn explicit_vm_controllers_limit_generated_flows() {
+        let mut config = crate::config::tests::valid();
+        config.controllers.insert(
+            "other-phone".into(),
+            ControllerConfig {
+                name: "other-phone".into(),
+                sources: vec!["100.64.0.9".parse().unwrap()],
+                adb_public_key_file: "/etc/adb/other-phone.pub".into(),
+                active: true,
+            },
+        );
+        config.vms.get_mut("android-game-01").unwrap().controllers = vec!["my-iphone".into()];
+        let rendered = render(&config, false).unwrap();
+        assert!(rendered.contains("100.64.0.2"));
+        assert!(!rendered.contains("100.64.0.9"));
+    }
+
+    #[test]
+    fn all_inactive_controllers_produce_fail_closed_empty_set() {
+        let mut config = crate::config::tests::valid();
+        config.controllers.get_mut("my-iphone").unwrap().active = false;
+        config.validate().unwrap();
+        let rendered = render(&config, false).unwrap();
+        assert!(!rendered.contains("100.64.0.2"));
+        assert!(rendered.contains("\"policy\": \"drop\""));
     }
 }

@@ -82,8 +82,8 @@ config="$project_dir/config.toml"
   printf 'guest_interface = "eth1"\n'
   printf 'lan_address = "10.80.0.3"\n'
   printf '\n'
-  printf '[[router.access]]\nsources = ["%s"]\nguest = "10.80.0.2"\n\n' "$controller_ip"
-  printf '[[android_vms]]\nname = "integration-android"\naddress = "10.80.0.2"\nbase_image = "/tmp/android-base.qcow2"\n\n'
+  printf '[controllers.integration-controller]\nsources = ["%s"]\nadb_public_key_file = "/tmp/integration-controller.pub"\n\n' "$controller_ip"
+  printf '[vms.integration-android]\naddress = "10.80.0.2"\nbase_image = "/tmp/android-base.qcow2"\n\n'
   printf '[network]\nrouter_uplink_network = "default"\nguest_network = "tailnet-android-guest"\nguest_bridge = "vmbr-android"\nguest_subnet = "10.80.0.0/24"\n'
   printf '[storage]\nstate_dir = "/tmp/state"\nimage_dir = "/tmp/images"\nvm_dir = "/tmp/vms"\n'
 } >"$config"

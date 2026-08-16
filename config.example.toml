@@ -7,16 +7,18 @@ uplink_interface = "ens3"
 guest_interface = "ens4"
 lan_address = "10.80.0.1"
 
-[[router.access]]
+[controllers.my-iphone]
+# The embedded Scrcpy Remote tsnet node may have more than one address over time.
 sources = ["100.64.0.2", "100.64.0.3"]
-guest = "10.80.0.2"
+adb_public_key_file = "/etc/tailnet-android-vm-manager/adb-keys/my-iphone.pub"
+active = true
 
-[[android_vms]]
-name = "android-game-01"
+[vms.android-game-01]
 labels = ["game", "primary"]
 address = "10.80.0.2"
 base_image = "/var/lib/tailnet-android-vm-manager/images/android-base.qcow2"
-adb_public_key_files = ["/etc/tailnet-android-vm-manager/adb-keys/my-iphone.pub"]
+# Omit controllers to allow every active controller. Set an explicit list to
+# restrict this VM, for example: controllers = ["my-iphone"]
 vcpus = 4
 memory_mib = 4096
 autostart = false

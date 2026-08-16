@@ -66,6 +66,11 @@ each `(Tailscale source IPv4, Android destination IPv4)` pair in a concatenated
 set. It permits only set members on TCP 5555, established replies, and guest
 Internet NAT, and drops every other forwarded packet.
 
+Controller records own their observed Tailscale source addresses and ADB public
+key. VM records optionally reference controller names; an omitted list means
+all active controllers. The router flow set and desired guest key bundle are
+derived from this single relationship, so address and key policy cannot drift.
+
 The source allowlist narrows exposure and helps operational revocation. It is
 not a durable identity proof: a compromised coordination plane may change which
 peer receives an allowed address.
@@ -111,6 +116,13 @@ The future manager compares its local database with libvirt domains,
 managed-save state, snapshots, router mappings, and guest ADB public keys.
 Unknown mappings and revoked guest keys are removed. Tailscale identity or
 `whois` output must never create a device permission.
+
+The host can already validate and render each VM's complete desired
+`adb_keys` content. Applying that content remains an Android image integration
+boundary: the planned image uses a host-generated read-only configuration
+artifact and a narrowly scoped Android init service. Until that service exists,
+operators must approve or remove keys through the image-specific console path;
+the manager must not claim that rendered desired state has reached a guest.
 
 The likely single-host schema contains `devices`, `vms`, `vm_permissions`, and
 `audit_events`. The domain model uses project-owned ADB credentials rather than

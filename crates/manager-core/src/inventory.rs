@@ -30,15 +30,14 @@ pub fn select<'a>(
     }
     if let Some(name) = &selector.name {
         return config
-            .android_vms
-            .iter()
-            .find(|vm| vm.name == *name)
+            .vms
+            .get(name)
             .map(|vm| vec![vm])
             .ok_or_else(|| SelectorError::UnknownVm(name.clone()));
     }
     let selected = config
-        .android_vms
-        .iter()
+        .vms
+        .values()
         .filter(|vm| {
             selector.all
                 || selector
@@ -61,7 +60,8 @@ mod tests {
     #[test]
     fn selects_intersection_of_labels() {
         let mut config = crate::config::tests::valid();
-        config.android_vms[0].labels = vec!["game".into(), "primary".into()];
+        config.vms.get_mut("android-game-01").unwrap().labels =
+            vec!["game".into(), "primary".into()];
         let selected = select(
             &config,
             &Selector {

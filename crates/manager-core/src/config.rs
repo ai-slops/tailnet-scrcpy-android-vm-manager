@@ -1,4 +1,5 @@
 use std::{
+    collections::{BTreeMap, HashSet},
     fs,
     net::{IpAddr, Ipv4Addr},
     path::{Path, PathBuf},
@@ -12,7 +13,8 @@ use thiserror::Error;
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub router: RouterConfig,
-    pub android_vms: Vec<AndroidVmConfig>,
+    pub controllers: BTreeMap<String, ControllerConfig>,
+    pub vms: BTreeMap<String, AndroidVmConfig>,
     #[serde(default)]
     pub network: NetworkConfig,
     #[serde(default)]
@@ -22,19 +24,35 @@ pub struct Config {
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct AndroidVmConfig {
+    #[serde(skip)]
     pub name: String,
     #[serde(default)]
     pub labels: Vec<String>,
     pub address: Ipv4Addr,
     pub base_image: PathBuf,
     #[serde(default)]
-    pub adb_public_key_files: Vec<PathBuf>,
+    pub controllers: Vec<String>,
     #[serde(default = "default_vm_vcpus")]
     pub vcpus: u16,
     #[serde(default = "default_vm_memory_mib")]
     pub memory_mib: u32,
     #[serde(default)]
     pub autostart: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ControllerConfig {
+    #[serde(skip)]
+    pub name: String,
+    pub sources: Vec<Ipv4Addr>,
+    pub adb_public_key_file: PathBuf,
+    #[serde(default = "default_true")]
+    pub active: bool,
+}
+
+const fn default_true() -> bool {
+    true
 }
 
 const fn default_vm_vcpus() -> u16 {
@@ -54,14 +72,6 @@ pub struct RouterConfig {
     pub uplink_interface: String,
     pub guest_interface: String,
     pub lan_address: Ipv4Addr,
-    pub access: Vec<RouterAccess>,
-}
-
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Hash)]
-#[serde(deny_unknown_fields)]
-pub struct RouterAccess {
-    pub sources: Vec<Ipv4Addr>,
-    pub guest: Ipv4Addr,
 }
 
 fn default_tailscale_interface() -> String {
@@ -128,10 +138,16 @@ impl Config {
             path: path.into(),
             source,
         })?;
-        let config: Self = toml::from_str(&contents).map_err(|source| ConfigError::Parse {
+        let mut config: Self = toml::from_str(&contents).map_err(|source| ConfigError::Parse {
             path: path.into(),
             source,
         })?;
+        for (name, controller) in &mut config.controllers {
+            controller.name.clone_from(name);
+        }
+        for (name, vm) in &mut config.vms {
+            vm.name.clone_from(name);
+        }
         config.validate()?;
         Ok(config)
     }
@@ -170,23 +186,52 @@ impl Config {
                 "router.lan_address must be inside network.guest_subnet".into(),
             ));
         }
-        if self.router.access.is_empty() {
+        if self.controllers.is_empty() {
             return Err(ConfigError::Validation(
-                "router.access must contain at least one controller-to-guest mapping".into(),
+                "controllers must contain at least one controller".into(),
             ));
         }
-        if self.android_vms.is_empty() {
+        if self.vms.is_empty() {
             return Err(ConfigError::Validation(
-                "android_vms must contain at least one persistent VM".into(),
+                "vms must contain at least one persistent VM".into(),
             ));
         }
-        let mut vm_names = std::collections::HashSet::new();
-        let mut vm_addresses = std::collections::HashSet::new();
-        for vm in &self.android_vms {
-            if !valid_identifier(&vm.name) {
+        let mut controller_sources = HashSet::new();
+        for (name, controller) in &self.controllers {
+            if !valid_identifier(name) || controller.name != *name {
                 return Err(ConfigError::Validation(format!(
-                    "Android VM name {} is invalid",
-                    vm.name
+                    "controller name {name} is invalid or inconsistent"
+                )));
+            }
+            if controller.active && controller.sources.is_empty() {
+                return Err(ConfigError::Validation(format!(
+                    "active controller {name} must contain at least one source"
+                )));
+            }
+            if !controller.adb_public_key_file.is_absolute() {
+                return Err(ConfigError::Validation(format!(
+                    "controller {name} ADB public-key path must be absolute"
+                )));
+            }
+            for source in &controller.sources {
+                let octets = source.octets();
+                if octets[0] != 100 || !(64..=127).contains(&octets[1]) {
+                    return Err(ConfigError::Validation(format!(
+                        "controller source {source} is outside 100.64.0.0/10"
+                    )));
+                }
+                if controller.active && !controller_sources.insert(*source) {
+                    return Err(ConfigError::Validation(format!(
+                        "active controller source {source} is duplicated"
+                    )));
+                }
+            }
+        }
+        let mut vm_addresses = HashSet::new();
+        for (name, vm) in &self.vms {
+            if !valid_identifier(name) || vm.name != *name {
+                return Err(ConfigError::Validation(format!(
+                    "Android VM name {name} is invalid or inconsistent"
                 )));
             }
             if !self.network.guest_subnet.contains(&IpAddr::V4(vm.address)) {
@@ -195,9 +240,9 @@ impl Config {
                     vm.name, vm.address
                 )));
             }
-            if !vm_names.insert(&vm.name) || !vm_addresses.insert(vm.address) {
+            if !vm_addresses.insert(vm.address) {
                 return Err(ConfigError::Validation(
-                    "Android VM names and addresses must be unique".into(),
+                    "Android VM addresses must be unique".into(),
                 ));
             }
             let mut labels = std::collections::HashSet::new();
@@ -221,52 +266,14 @@ impl Config {
                     vm.name
                 )));
             }
-            for path in &vm.adb_public_key_files {
-                if !path.is_absolute() {
+            let mut selected = HashSet::new();
+            for controller in &vm.controllers {
+                if !selected.insert(controller) || !self.controllers.contains_key(controller) {
                     return Err(ConfigError::Validation(format!(
-                        "Android VM {} ADB public-key paths must be absolute",
-                        vm.name
+                        "Android VM {} controllers must be unique configured controller names",
+                        vm.name,
                     )));
                 }
-            }
-        }
-        let mut mappings = std::collections::HashSet::new();
-        for access in &self.router.access {
-            if access.sources.is_empty() {
-                return Err(ConfigError::Validation(format!(
-                    "router access for {} must contain at least one source",
-                    access.guest
-                )));
-            }
-            for source in &access.sources {
-                let octets = source.octets();
-                if octets[0] != 100 || !(64..=127).contains(&octets[1]) {
-                    return Err(ConfigError::Validation(format!(
-                        "controller source {source} is outside 100.64.0.0/10"
-                    )));
-                }
-                if !mappings.insert((*source, access.guest)) {
-                    return Err(ConfigError::Validation(format!(
-                        "duplicate router access mapping {source} -> {}",
-                        access.guest
-                    )));
-                }
-            }
-            if !self
-                .network
-                .guest_subnet
-                .contains(&IpAddr::V4(access.guest))
-            {
-                return Err(ConfigError::Validation(format!(
-                    "routed Android guest {} is outside network.guest_subnet",
-                    access.guest
-                )));
-            }
-            if !vm_addresses.contains(&access.guest) {
-                return Err(ConfigError::Validation(format!(
-                    "router access guest {} is not a configured Android VM",
-                    access.guest
-                )));
             }
         }
         for (name, value) in [
@@ -309,6 +316,16 @@ impl Config {
         }
         Ok(())
     }
+
+    pub fn controllers_for_vm(
+        &self,
+        vm: &AndroidVmConfig,
+    ) -> impl Iterator<Item = &ControllerConfig> {
+        self.controllers.values().filter(move |controller| {
+            controller.active
+                && (vm.controllers.is_empty() || vm.controllers.contains(&controller.name))
+        })
+    }
 }
 
 fn valid_identifier(value: &str) -> bool {
@@ -323,6 +340,22 @@ fn valid_identifier(value: &str) -> bool {
 pub(crate) mod tests {
     use super::*;
     pub(crate) fn valid() -> Config {
+        let controller = ControllerConfig {
+            name: "my-iphone".into(),
+            sources: vec!["100.64.0.2".parse().unwrap()],
+            adb_public_key_file: "/etc/adb/my-iphone.pub".into(),
+            active: true,
+        };
+        let vm = AndroidVmConfig {
+            name: "android-game-01".into(),
+            labels: vec!["game".into()],
+            address: "10.80.0.2".parse().unwrap(),
+            base_image: "/var/lib/tailnet-android-vm-manager/images/android-base.qcow2".into(),
+            controllers: vec![],
+            vcpus: 4,
+            memory_mib: 4096,
+            autostart: false,
+        };
         Config {
             router: RouterConfig {
                 hostname: "android-tailnet-router".into(),
@@ -331,21 +364,9 @@ pub(crate) mod tests {
                 uplink_interface: "ens3".into(),
                 guest_interface: "ens4".into(),
                 lan_address: "10.80.0.1".parse().unwrap(),
-                access: vec![RouterAccess {
-                    sources: vec!["100.64.0.2".parse().unwrap()],
-                    guest: "10.80.0.2".parse().unwrap(),
-                }],
             },
-            android_vms: vec![AndroidVmConfig {
-                name: "android-game-01".into(),
-                labels: vec!["game".into()],
-                address: "10.80.0.2".parse().unwrap(),
-                base_image: "/var/lib/tailnet-android-vm-manager/images/android-base.qcow2".into(),
-                adb_public_key_files: vec![],
-                vcpus: 4,
-                memory_mib: 4096,
-                autostart: false,
-            }],
+            controllers: BTreeMap::from([("my-iphone".into(), controller)]),
+            vms: BTreeMap::from([("android-game-01".into(), vm)]),
             network: NetworkConfig::default(),
             storage: StorageConfig::default(),
         }
@@ -353,6 +374,34 @@ pub(crate) mod tests {
     #[test]
     fn accepts_valid_config() {
         valid().validate().unwrap();
+    }
+    #[test]
+    fn loads_names_from_map_keys() {
+        let path = std::env::temp_dir().join(format!("manager-config-{}.toml", std::process::id()));
+        fs::write(
+            &path,
+            r#"
+[router]
+hostname = "router"
+auth_key_file = "/run/auth-key"
+uplink_interface = "ens3"
+guest_interface = "ens4"
+lan_address = "10.80.0.1"
+
+[controllers.phone]
+sources = ["100.64.0.2"]
+adb_public_key_file = "/etc/adb/phone.pub"
+
+[vms.game-01]
+address = "10.80.0.2"
+base_image = "/var/lib/images/base.qcow2"
+"#,
+        )
+        .unwrap();
+        let config = Config::load(&path).unwrap();
+        fs::remove_file(path).unwrap();
+        assert_eq!(config.controllers["phone"].name, "phone");
+        assert_eq!(config.vms["game-01"].name, "game-01");
     }
     #[test]
     fn rejects_public_guest_subnet() {
@@ -367,47 +416,32 @@ pub(crate) mod tests {
         assert!(c.validate().is_err());
     }
     #[test]
-    fn rejects_empty_access() {
+    fn rejects_empty_controllers() {
         let mut c = valid();
-        c.router.access.clear();
+        c.controllers.clear();
         assert!(c.validate().is_err());
     }
     #[test]
     fn rejects_non_tailnet_source() {
         let mut c = valid();
-        c.router.access[0].sources[0] = "192.0.2.1".parse().unwrap();
-        assert!(c.validate().is_err());
-    }
-    #[test]
-    fn rejects_guest_outside_subnet() {
-        let mut c = valid();
-        c.router.access[0].guest = "10.81.0.2".parse().unwrap();
+        c.controllers.get_mut("my-iphone").unwrap().sources[0] = "192.0.2.1".parse().unwrap();
         assert!(c.validate().is_err());
     }
 
     #[test]
-    fn rejects_uninventoried_router_guest() {
+    fn rejects_unsafe_vm_names() {
         let mut c = valid();
-        c.router.access[0].guest = "10.80.0.3".parse().unwrap();
-        assert!(c.validate().is_err());
-    }
-
-    #[test]
-    fn rejects_duplicate_or_unsafe_vm_names() {
-        let mut c = valid();
-        c.android_vms[0].name = "../../domain".into();
-        assert!(c.validate().is_err());
-        let mut c = valid();
-        c.android_vms.push(c.android_vms[0].clone());
+        let vm = c.vms.remove("android-game-01").unwrap();
+        c.vms.insert("../../domain".into(), vm);
         assert!(c.validate().is_err());
     }
 
     #[test]
     fn rejects_duplicate_or_unsafe_labels() {
         let mut config = valid();
-        config.android_vms[0].labels = vec!["game".into(), "game".into()];
+        config.vms.get_mut("android-game-01").unwrap().labels = vec!["game".into(), "game".into()];
         assert!(config.validate().is_err());
-        config.android_vms[0].labels = vec!["contains spaces".into()];
+        config.vms.get_mut("android-game-01").unwrap().labels = vec!["contains spaces".into()];
         assert!(config.validate().is_err());
     }
 }

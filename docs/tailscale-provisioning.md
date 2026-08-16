@@ -54,7 +54,7 @@ sudo routerctl enroll
 
 The command disables accepted routes, exit-node service, Tailscale SSH, DNS
 acceptance, and posture reporting. It advertises only the deduplicated Android
-guest `/32` routes derived from `[[router.access]]`. If already connected, it
+guest `/32` routes derived from `[vms.NAME]`. If already connected, it
 does not access or reuse the auth key.
 
 ## Route approval
@@ -98,9 +98,9 @@ controller's private key. Only the last step authorizes Android control.
 
 ## Revocation
 
-1. Remove the controller-to-guest entry from `[[router.access]]`.
-2. Reapply router nftables and terminate existing forwarding state.
-3. Remove the controller ADB public key from the Android VM.
+1. Set the controller to `active = false` or remove it from configuration.
+2. Reconcile router nftables and terminate existing forwarding state.
+3. Reconcile the desired ADB key bundle into each Android VM.
 4. Remove the controller machine from Tailscale.
 
 Router forwarding and ADB authorization are separate controls; revocation must

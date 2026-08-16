@@ -65,7 +65,7 @@ pub fn run(config: &Config) -> Result<Report, ReconcileError> {
     }
     lines.push("router\ttailnet-android-router\trunning".into());
 
-    for vm in &config.android_vms {
+    for vm in config.vms.values() {
         match reconcile_vm(config, vm) {
             Ok(detail) => lines.push(format!("vm\t{}\t{detail}", vm.name)),
             Err(error) => {

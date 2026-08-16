@@ -80,7 +80,7 @@ mod tests {
     #[test]
     fn android_domain_is_persistent_and_port_isolated() {
         let config = crate::config::tests::valid();
-        let vm = &config.android_vms[0];
+        let vm = config.vms.get("android-game-01").unwrap();
         let xml = domain_xml(&config, vm);
         assert!(xml.contains("android-game-01.qcow2"));
         assert!(xml.contains("network='tailnet-android-guest'"));

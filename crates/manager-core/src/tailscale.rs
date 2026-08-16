@@ -91,12 +91,7 @@ pub fn reconfigure(
 
 #[must_use]
 pub fn advertised_routes(config: &Config) -> String {
-    let mut guests = config
-        .router
-        .access
-        .iter()
-        .map(|access| access.guest)
-        .collect::<Vec<_>>();
+    let mut guests = config.vms.values().map(|vm| vm.address).collect::<Vec<_>>();
     guests.sort_unstable();
     guests.dedup();
     guests
@@ -146,9 +141,6 @@ fn output_text(output: &Output) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{
-        AndroidVmConfig, NetworkConfig, RouterAccess, RouterConfig, StorageConfig,
-    };
     use std::{
         collections::VecDeque,
         fs::Permissions,
@@ -173,32 +165,9 @@ mod tests {
         }
     }
     fn config(path: &Path) -> Config {
-        Config {
-            router: RouterConfig {
-                hostname: "android-tailnet-router".into(),
-                auth_key_file: path.into(),
-                tailscale_interface: "tailscale0".into(),
-                uplink_interface: "ens3".into(),
-                guest_interface: "ens4".into(),
-                lan_address: "10.80.0.1".parse().unwrap(),
-                access: vec![RouterAccess {
-                    sources: vec!["100.64.0.2".parse().unwrap()],
-                    guest: "10.80.0.2".parse().unwrap(),
-                }],
-            },
-            android_vms: vec![AndroidVmConfig {
-                name: "android-game-01".into(),
-                labels: vec!["game".into()],
-                address: "10.80.0.2".parse().unwrap(),
-                base_image: "/var/lib/tailnet-android-vm-manager/images/android-base.qcow2".into(),
-                adb_public_key_files: vec![],
-                vcpus: 4,
-                memory_mib: 4096,
-                autostart: false,
-            }],
-            network: NetworkConfig::default(),
-            storage: StorageConfig::default(),
-        }
+        let mut config = crate::config::tests::valid();
+        config.router.auth_key_file = path.into();
+        config
     }
     #[test]
     fn enrolls_and_advertises_only_guest_32s() {

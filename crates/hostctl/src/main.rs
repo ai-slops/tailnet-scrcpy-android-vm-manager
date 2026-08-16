@@ -257,7 +257,7 @@ fn main() -> anyhow::Result<ExitCode> {
                 }
                 VmCommand::AdbAuthorizedKeys { name } => {
                     let vm = lifecycle::find_vm(&config, &name)?;
-                    print!("{}", guest_bootstrap::adb_authorized_keys(vm)?);
+                    print!("{}", guest_bootstrap::adb_authorized_keys(&config, vm)?);
                     Ok(ExitCode::SUCCESS)
                 }
                 VmCommand::Status { selection } => run_bulk(&config, &selection, Operation::Status),

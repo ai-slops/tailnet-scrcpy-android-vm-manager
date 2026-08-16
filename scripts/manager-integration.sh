@@ -33,16 +33,11 @@ uplink_interface = "ens3"
 guest_interface = "ens4"
 lan_address = "10.80.0.1"
 
-[[router.access]]
+[controllers.test-phone]
 sources = ["100.64.0.2"]
-guest = "10.80.0.2"
+adb_public_key_file = "/etc/adb/test-phone.pub"
 
-[[router.access]]
-sources = ["100.64.0.2"]
-guest = "10.80.0.3"
-
-[[android_vms]]
-name = "game-01"
+[vms.game-01]
 labels = ["game", "primary"]
 address = "10.80.0.2"
 base_image = "$test_dir/images/android-base.qcow2"
@@ -50,8 +45,7 @@ vcpus = 2
 memory_mib = 1024
 autostart = true
 
-[[android_vms]]
-name = "game-02"
+[vms.game-02]
 labels = ["game"]
 address = "10.80.0.3"
 base_image = "$test_dir/images/android-base.qcow2"

@@ -51,9 +51,8 @@ impl Virsh for SystemVirsh {
 
 pub fn find_vm<'a>(config: &'a Config, name: &str) -> Result<&'a AndroidVmConfig, LifecycleError> {
     config
-        .android_vms
-        .iter()
-        .find(|vm| vm.name == name)
+        .vms
+        .get(name)
         .ok_or_else(|| LifecycleError::UnknownVm(name.into()))
 }
 
@@ -203,7 +202,7 @@ mod tests {
             labels: vec!["game".into()],
             address: "10.80.0.2".parse().unwrap(),
             base_image: "/var/lib/tailnet-android-vm-manager/images/android-base.qcow2".into(),
-            adb_public_key_files: vec![],
+            controllers: vec![],
             vcpus: 4,
             memory_mib: 4096,
             autostart: false,

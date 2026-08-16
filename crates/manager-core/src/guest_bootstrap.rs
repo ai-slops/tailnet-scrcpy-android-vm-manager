@@ -21,10 +21,14 @@ pub enum GuestBootstrapError {
     },
 }
 
-pub fn adb_authorized_keys(vm: &AndroidVmConfig) -> Result<String, GuestBootstrapError> {
+pub fn adb_authorized_keys(
+    config: &Config,
+    vm: &AndroidVmConfig,
+) -> Result<String, GuestBootstrapError> {
     let mut fingerprints = HashSet::new();
     let mut lines = Vec::new();
-    for path in &vm.adb_public_key_files {
+    for controller in config.controllers_for_vm(vm) {
+        let path = &controller.adb_public_key_file;
         let contents = fs::read_to_string(path).map_err(|source| GuestBootstrapError::ReadKey {
             path: path.display().to_string(),
             source,
@@ -59,7 +63,7 @@ pub fn dnsmasq_config(config: &Config) -> String {
         config.router.lan_address,
         config.router.lan_address,
     );
-    for vm in &config.android_vms {
+    for vm in config.vms.values() {
         output.push_str(&format!(
             "dhcp-host={},{},{},infinite\n",
             android_vm::mac_address(vm),
@@ -84,6 +88,7 @@ pub fn router_netplan(config: &Config) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
 
     #[test]
     fn generates_static_guest_leases_via_router() {
@@ -100,5 +105,27 @@ mod tests {
         assert!(output.contains("ens3:\n      dhcp4: true"));
         assert!(output.contains("ens4:\n      dhcp4: false"));
         assert!(output.contains("addresses: [10.80.0.1/24]"));
+    }
+
+    #[test]
+    fn inactive_controller_is_removed_from_desired_adb_keys() {
+        let mut config = crate::config::tests::valid();
+        let path = std::env::temp_dir().join(format!("adb-key-{}.pub", std::process::id()));
+        fs::write(&path, format!("{} phone", STANDARD.encode([7_u8; 524]))).unwrap();
+        config
+            .controllers
+            .get_mut("my-iphone")
+            .unwrap()
+            .adb_public_key_file = path.clone();
+        let vm = config.vms.get("android-game-01").unwrap();
+        assert!(
+            adb_authorized_keys(&config, vm)
+                .unwrap()
+                .ends_with(" phone\n")
+        );
+        config.controllers.get_mut("my-iphone").unwrap().active = false;
+        let vm = config.vms.get("android-game-01").unwrap();
+        assert_eq!(adb_authorized_keys(&config, vm).unwrap(), "");
+        fs::remove_file(path).unwrap();
     }
 }

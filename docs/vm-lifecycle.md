@@ -1,9 +1,9 @@
 # Persistent VM Lifecycle and Snapshots
 
-Every Android instance is persistent and must be declared in `[[android_vms]]`.
-The VM name is also its fixed libvirt domain name, and its fixed address must be
-inside `network.guest_subnet`. Router access entries may refer only to addresses
-in this inventory.
+Every Android instance is persistent and must be declared in `[vms.NAME]`.
+The table key is also its fixed libvirt domain name, and its fixed address must
+be inside `network.guest_subnet`. The router advertises and permits only
+addresses in this inventory.
 
 Each entry names an immutable qcow2 `base_image`. Creation verifies that format,
 creates a persistent overlay without overwriting an existing file, and defines
@@ -17,14 +17,22 @@ just android-create android-game-01 .local/phone/config.toml
 Each VM may also declare `labels` and whether it should start with the host:
 
 ~~~toml
-[[android_vms]]
-name = "game-01"
+[vms.game-01]
 labels = ["game", "account-a"]
 address = "10.80.0.2"
 base_image = "/var/lib/tailnet-android-vm-manager/images/android-base.qcow2"
 vcpus = 4
 memory_mib = 4096
 autostart = false
+~~~
+
+Omitting `controllers` grants every active controller access to the VM. An
+explicit list restricts both the generated router flow set and desired ADB key
+bundle:
+
+~~~toml
+[vms.game-01]
+controllers = ["my-iphone"]
 ~~~
 
 Labels are unique valid identifiers. Supplying several `--label` flags selects
