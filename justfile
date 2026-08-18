@@ -31,7 +31,7 @@ test:
 
 # Validate repository-local shell and patch syntax.
 static-check:
-  sh -n scripts/android-spike-sdk.sh scripts/headscale-integration.sh scripts/host-smoke.sh scripts/manager-integration.sh scripts/nested-ubuntu-test.sh scripts/router-provision.sh scripts/router-provision-test.sh scripts/router-sync.sh scripts/zig-cc
+  sh -n scripts/android-spike-sdk.sh scripts/headscale-integration.sh scripts/host-smoke.sh scripts/manager-integration.sh scripts/nested-ubuntu-test.sh scripts/router-enroll.sh scripts/router-provision.sh scripts/router-provision-test.sh scripts/router-sync.sh scripts/zig-cc
   git diff --check
 
 # Validate the disposable Headscale Compose model without starting it.
@@ -112,6 +112,10 @@ router-xml config="config.example.toml":
 router-provision config="config.example.toml":
   cargo build -q -p hostctl -p routerctl
   sh scripts/router-provision.sh "{{config}}" target/debug/hostctl target/debug/routerctl
+
+# Install an auth key over SSH stdin, enroll the router, and run preflight.
+router-enroll ssh_private_key auth_key=".local/secrets/authkey.txt":
+  sh scripts/router-enroll.sh "{{ssh_private_key}}" "{{auth_key}}"
 
 # Open the router's serial console (exit with Ctrl+]).
 router-console:

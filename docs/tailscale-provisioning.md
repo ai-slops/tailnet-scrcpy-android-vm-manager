@@ -46,7 +46,22 @@ sudo chmod 0600 /etc/tailnet-android-vm-manager/secrets/tailscale-authkey
 Paste the key into `tee`, press Enter, and then Ctrl-D. `routerctl` passes only
 the `file:` path to the Tailscale CLI, so the secret is not placed in argv.
 
-Enroll from inside the router VM:
+From the KVM host, the preferred recipe waits for cloud-init, transfers the key
+only over encrypted SSH stdin, installs it as mode `0600`, enrolls the router,
+applies its firewall, and runs preflight:
+
+~~~shell
+chmod 0600 .local/secrets/authkey.txt
+just router-enroll /path/to/router_id_ed25519
+~~~
+
+The private SSH key must match the public key supplied to `router-provision`.
+The auth key is not placed in argv, cloud-init, a temporary file, or command
+output. The ignored host copy remains in place for operator-controlled recovery;
+delete it manually after successful enrollment if the key is one-off and no
+longer needed.
+
+The equivalent command from inside the router VM is:
 
 ~~~shell
 sudo routerctl enroll

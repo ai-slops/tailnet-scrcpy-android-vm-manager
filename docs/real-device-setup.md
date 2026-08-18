@@ -76,13 +76,11 @@ with `just router-console` and exit with `Ctrl+]`. Find its uplink address with
 `virsh domifaddr tailnet-android-router --source lease`, then SSH as `ubuntu`.
 
 The seed contains the public SSH key, but no private key or Tailscale auth key.
-Inside the router, install an ordinary one-off auth key at the configured path
-and enroll:
+From the host, install the ordinary one-off key over SSH stdin and enroll:
 
 ~~~shell
-sudo install -d -m 0700 /etc/tailnet-android-vm-manager/secrets
-sudo install -m 0600 /dev/stdin /etc/tailnet-android-vm-manager/secrets/tailscale-authkey
-sudo routerctl enroll
+chmod 0600 .local/secrets/authkey.txt
+just router-enroll /path/to/router_id_ed25519
 ~~~
 
 Approve only the advertised Android `/32` routes. Reapply `routerctl
