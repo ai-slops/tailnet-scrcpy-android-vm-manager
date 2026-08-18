@@ -80,7 +80,7 @@ package provides newuidmap and newgidmap.
 After starting a fresh login session:
 
 ~~~shell
-just host-smoke
+just diagnose host-smoke
 ~~~
 
 The script proves that QEMU can initialize KVM, rather than merely checking that
@@ -89,7 +89,7 @@ The script proves that QEMU can initialize KVM, rather than merely checking that
 Then run the project-specific checks:
 
 ~~~shell
-just preflight .local/spike/config.toml
+just setup preflight .local/spike/config.toml
 ~~~
 
 ## Disposable nested Ubuntu validation
@@ -98,12 +98,12 @@ On an Ubuntu KVM host with nested virtualization enabled, validate a clean clone
 in a disposable Ubuntu 24.04 VM:
 
 ~~~shell
-just nested-ubuntu-test
+just dev nested-ubuntu-test
 ~~~
 
 The recipe boots a four-vCPU cloud VM with host CPU passthrough, clones the
 current origin and checks out the exact current commit, installs the pinned mise
-tools, and runs `just check`, `just router-provision-test`, the real nested-KVM
+tools, and runs `just dev check`, `just dev router-provision-test`, the real nested-KVM
 and rootless-Podman smoke test, and the Docker Headscale integration test. The
 VM and its runtime artifacts are removed on exit; the downloaded base image is
 cached in `/var/tmp`. Set `KEEP_NESTED_VM=1` to retain a failed VM for
@@ -130,13 +130,13 @@ The bootstrap script pins the command-line tools archive and verifies its
 published SHA-256 checksum. Run each step explicitly:
 
 ~~~shell
-just android-spike prepare
-just android-spike licenses
-just android-spike install
-just android-spike create
+just android-dev spike prepare
+just android-dev spike licenses
+just android-dev spike install
+just android-dev spike create
 newgrp kvm
-just android-spike check
-just android-spike start
+just android-dev spike check
+just android-dev spike start
 ~~~
 
 The licenses step displays Google's Android SDK terms and requires the operator

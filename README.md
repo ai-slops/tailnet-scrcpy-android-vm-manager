@@ -27,16 +27,16 @@ libvirt, nftables, persistent qcow2 guests, and AOSP images.
 With `cargo`, Zig, and `just` on `PATH`, use the repository recipes:
 
 ~~~shell
-just check
-just headscale-test
-just nested-ubuntu-test
-just preflight .local/spike/config.toml
+just dev check
+just dev headscale-test
+just dev nested-ubuntu-test
+just setup preflight .local/spike/config.toml
 just reconcile .local/phone/config.toml
 just vm-list .local/phone/config.toml
 just vm-start-label game 2 .local/phone/config.toml
-just guest-network-xml .local/phone/config.toml
-ROUTER_SSH_PUBLIC_KEY_FILE=/path/to/id_ed25519.pub just router-provision .local/phone/config.toml
-just android-create android-game-01 .local/phone/config.toml
+just diagnose guest-network-xml .local/phone/config.toml
+ROUTER_SSH_PUBLIC_KEY_FILE=/path/to/id_ed25519.pub just setup router-provision .local/phone/config.toml
+just setup android-create android-game-01 .local/phone/config.toml
 just --list
 ~~~
 
@@ -44,6 +44,20 @@ Mise is optional; `mise install` provides the pinned tool versions when it is
 available. The recipes and Cargo linker wrapper work without mise and keep Zig
 caches below the ignored `.local/` directory. Individual shell files remain
 directly runnable with `sh scripts/...` when a recipe is not appropriate.
+
+The root recipe list contains day-to-day VM operations only. Specialist
+commands are grouped by who uses them and when:
+
+- `just setup ...`: deployment operators during first installation, router
+  enrollment, Android VM creation, or controller-key changes;
+- `just diagnose ...`: operators investigating host, router, network, or
+  generated libvirt configuration;
+- `just dev ...`: contributors and CI validating repository changes; and
+- `just android-dev ...`: Android image maintainers running compatibility
+  spikes.
+
+Inspect a group with `just --list setup`, `just --list diagnose`, or
+`just --list dev`.
 
 ## Documentation
 

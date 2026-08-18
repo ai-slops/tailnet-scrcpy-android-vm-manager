@@ -10,8 +10,8 @@ creates a persistent overlay without overwriting an existing file, and defines
 a libvirt domain on the isolated guest network:
 
 ~~~shell
-just android-xml android-game-01 .local/phone/config.toml
-just android-create android-game-01 .local/phone/config.toml
+just diagnose android-xml android-game-01 .local/phone/config.toml
+just setup android-create android-game-01 .local/phone/config.toml
 ~~~
 
 Each VM may also declare `labels` and whether it should start with the host:

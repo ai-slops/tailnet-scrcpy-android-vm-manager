@@ -22,7 +22,7 @@ Internet access for Tailscale coordination, DERP, and guest NAT.
 Run the reproducible host-side provisioner:
 
 ~~~shell
-ROUTER_SSH_PUBLIC_KEY_FILE=/path/to/id_ed25519.pub just router-provision CONFIG
+ROUTER_SSH_PUBLIC_KEY_FILE=/path/to/id_ed25519.pub just setup router-provision CONFIG
 ~~~
 
 It caches the official Ubuntu 24.04 image, creates the overlay and NoCloud seed,
@@ -52,7 +52,7 @@ applies its firewall, and runs preflight:
 
 ~~~shell
 chmod 0600 .local/secrets/authkey.txt
-just router-enroll /path/to/router_id_ed25519
+just setup router-enroll /path/to/router_id_ed25519
 ~~~
 
 The private SSH key must match the public key supplied to `router-provision`.

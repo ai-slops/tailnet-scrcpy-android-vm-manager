@@ -95,4 +95,4 @@ $hostctl --config "$config" router-domain-xml >"$artifact_dir/router.xml"
 virsh define "$artifact_dir/router.xml"
 virsh autostart tailnet-android-router
 virsh start tailnet-android-router
-echo "Router VM started. Use 'just router-console' and wait for cloud-init before enrollment."
+echo "Router VM started. Use 'just diagnose router-console' and wait for cloud-init before enrollment."

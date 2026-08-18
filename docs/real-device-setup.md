@@ -37,7 +37,7 @@ Copy `config.example.toml` below `.local/` and edit:
 Validate all three generated libvirt artifacts together:
 
 ~~~shell
-just libvirt-xml-check android-game-01 .local/phone/config.toml
+just diagnose libvirt-xml-check android-game-01 .local/phone/config.toml
 ~~~
 
 Several observed addresses can belong to one controller. Omitting `controllers`
@@ -61,7 +61,7 @@ key that may log in as the cloud image's `ubuntu` account:
 ~~~shell
 sudo apt install cloud-image-utils qemu-utils libvirt-clients
 ROUTER_SSH_PUBLIC_KEY_FILE=/path/to/id_ed25519.pub \
-  just router-provision .local/phone/config.toml
+  just setup router-provision .local/phone/config.toml
 ~~~
 
 The recipe downloads and caches the official Ubuntu 24.04 cloud image, creates
@@ -72,7 +72,7 @@ router domain. It refuses to overwrite either router artifact. Set
 
 Cloud-init installs Tailscale, nftables, and dnsmasq and applies netplan,
 forwarding, static guest leases, and the default-deny firewall. Inspect progress
-with `just router-console` and exit with `Ctrl+]`. Find its uplink address with
+with `just diagnose router-console` and exit with `Ctrl+]`. Find its uplink address with
 `virsh domifaddr tailnet-android-router --source lease`, then SSH as `ubuntu`.
 
 The seed contains the public SSH key, but no private key or Tailscale auth key.
@@ -80,7 +80,7 @@ From the host, install the ordinary one-off key over SSH stdin and enroll:
 
 ~~~shell
 chmod 0600 .local/secrets/authkey.txt
-just router-enroll /path/to/router_id_ed25519
+just setup router-enroll /path/to/router_id_ed25519
 ~~~
 
 Approve only the advertised Android `/32` routes. Reapply `routerctl
@@ -91,7 +91,7 @@ firewall-apply` whenever source mappings change.
 Create the persistent overlay and domain:
 
 ~~~shell
-just android-create android-game-01 .local/phone/config.toml
+just setup android-create android-game-01 .local/phone/config.toml
 sudo virsh start android-game-01
 ~~~
 
@@ -116,7 +116,7 @@ authorized.
 The validated bundle is available with:
 
 ~~~shell
-just android-adb-keys android-game-01 .local/phone/config.toml
+just setup android-adb-keys android-game-01 .local/phone/config.toml
 ~~~
 
 ## Controller replacement

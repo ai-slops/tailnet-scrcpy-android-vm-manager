@@ -31,7 +31,7 @@ Export the ADB public key from Scrcpy Remote. Never copy its private key to the
 host or repository.
 
 ~~~shell
-just adb-fingerprint /path/to/ios-device.adb.pub
+just setup adb-fingerprint /path/to/ios-device.adb.pub
 ~~~
 
 Record the fingerprint. The command rejects private-key material, multiline
@@ -42,7 +42,7 @@ open until that mechanism is selected.
 ## 3. Check the host
 
 ~~~shell
-just preflight .local/spike/config.toml
+just setup preflight .local/spike/config.toml
 ~~~
 
 Every check must pass on the actual KVM host. Keep local configuration and test

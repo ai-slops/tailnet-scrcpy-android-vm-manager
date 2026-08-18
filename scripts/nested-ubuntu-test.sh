@@ -130,10 +130,10 @@ cd manager
 git checkout --detach "$repo_ref"
 mise trust
 mise install
-just check
-just router-provision-test
+just dev check
+just dev router-provision-test
 sudo -H -u ubuntu sh -c 'cd /home/ubuntu/manager && sh scripts/host-smoke.sh'
-sudo -H -u ubuntu sh -c 'cd /home/ubuntu/manager && PATH=/home/ubuntu/.local/bin:/home/ubuntu/.local/share/mise/shims:$PATH just headscale-test'
+sudo -H -u ubuntu sh -c 'cd /home/ubuntu/manager && PATH=/home/ubuntu/.local/bin:/home/ubuntu/.local/share/mise/shims:$PATH just dev headscale-test'
 EOF
 chmod 0600 "$runtime_dir/remote-test.sh"
 ssh -i "$runtime_dir/id_ed25519" -o BatchMode=yes -o StrictHostKeyChecking=no \
