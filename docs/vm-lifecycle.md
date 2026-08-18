@@ -10,8 +10,8 @@ creates a persistent overlay without overwriting an existing file, and defines
 a libvirt domain on the isolated guest network:
 
 ~~~shell
-just diagnose android-xml android-game-01 .local/phone/config.toml
-just setup android-create android-game-01 .local/phone/config.toml
+just diagnose android-xml android-game-01
+just setup android-create android-game-01
 ~~~
 
 Each VM may also declare `labels` and whether it should start with the host:
@@ -45,7 +45,7 @@ does not stop an already-running VM.
 After the router has been provisioned, reconcile the full declared inventory:
 
 ~~~shell
-just reconcile .local/phone/config.toml
+just reconcile
 ~~~
 
 This idempotently defines and starts the isolated network and router, creates a
@@ -59,7 +59,7 @@ To also synchronize the already-running router VM, use the private half of the
 SSH key whose public half was supplied to `router-provision`:
 
 ~~~shell
-just reconcile-all /path/to/id_ed25519 .local/phone/config.toml
+just reconcile-all /path/to/id_ed25519
 ~~~
 
 This copies no private key into the VM. It uploads the validated project config

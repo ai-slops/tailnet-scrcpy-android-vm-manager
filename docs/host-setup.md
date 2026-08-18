@@ -89,7 +89,7 @@ The script proves that QEMU can initialize KVM, rather than merely checking that
 Then run the project-specific checks:
 
 ~~~shell
-just setup preflight .local/spike/config.toml
+just setup preflight
 ~~~
 
 ## Disposable nested Ubuntu validation

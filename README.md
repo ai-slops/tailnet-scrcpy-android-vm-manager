@@ -30,13 +30,14 @@ With `cargo`, Zig, and `just` on `PATH`, use the repository recipes:
 just dev check
 just dev headscale-test
 just dev nested-ubuntu-test
-just setup preflight .local/spike/config.toml
-just reconcile .local/phone/config.toml
-just vm-list .local/phone/config.toml
-just vm-start-label game 2 .local/phone/config.toml
-just diagnose guest-network-xml .local/phone/config.toml
-ROUTER_SSH_PUBLIC_KEY_FILE=/path/to/id_ed25519.pub just setup router-provision .local/phone/config.toml
-just setup android-create android-game-01 .local/phone/config.toml
+just setup init-config
+just setup preflight
+just reconcile
+just vm-list
+just vm-start-label game
+just diagnose guest-network-xml
+ROUTER_SSH_PUBLIC_KEY_FILE=/path/to/id_ed25519.pub just setup router-provision
+just setup android-create android-game-01
 just --list
 ~~~
 
@@ -58,6 +59,12 @@ commands are grouped by who uses them and when:
 
 Inspect a group with `just --list setup`, `just --list diagnose`, or
 `just --list dev`.
+
+Operator recipes use the ignored `.local/config.toml` by default. Set
+`MANAGER_CONFIG=/absolute/path/config.toml` for a persistent alternate
+deployment, or pass a recipe's final `config` argument for a one-off override.
+`config.example.toml` remains a tracked template and is never used as mutable
+deployment state.
 
 ## Documentation
 

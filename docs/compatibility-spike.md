@@ -10,7 +10,7 @@ not a production deployment procedure.
 - Authenticated ADB listening on the VM private TCP port 5555
 - An iPhone or iPad with the current Scrcpy Remote release
 - A unique ADB key pair generated or imported by that iOS device
-- A config copied from config.example.toml with controller-to-guest mappings
+- An ignored `.local/config.toml` created from the tracked example
 
 Do not install Tailscale on the KVM host. The isolated router VM must advertise
 only the test Android `/32` and forward only mapped controller traffic to ADB.
@@ -42,7 +42,7 @@ open until that mechanism is selected.
 ## 3. Check the host
 
 ~~~shell
-just setup preflight .local/spike/config.toml
+MANAGER_CONFIG=.local/spike/config.toml just setup preflight
 ~~~
 
 Every check must pass on the actual KVM host. Keep local configuration and test

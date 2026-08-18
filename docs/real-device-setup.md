@@ -26,7 +26,13 @@ this project.
 
 ## 1. Create local configuration
 
-Copy `config.example.toml` below `.local/` and edit:
+Create the ignored default config and edit `.local/config.toml`:
+
+~~~shell
+just setup init-config
+~~~
+
+The recipe refuses to overwrite an existing file. Then edit:
 
 - `controllers.NAME.sources`: each Scrcpy Remote Tailscale IPv4 address;
 - `controllers.NAME.adb_public_key_file`: that controller's exported public key;
@@ -37,7 +43,7 @@ Copy `config.example.toml` below `.local/` and edit:
 Validate all three generated libvirt artifacts together:
 
 ~~~shell
-just diagnose libvirt-xml-check android-game-01 .local/phone/config.toml
+just diagnose libvirt-xml-check android-game-01
 ~~~
 
 Several observed addresses can belong to one controller. Omitting `controllers`
@@ -61,7 +67,7 @@ key that may log in as the cloud image's `ubuntu` account:
 ~~~shell
 sudo apt install cloud-image-utils qemu-utils libvirt-clients
 ROUTER_SSH_PUBLIC_KEY_FILE=/path/to/id_ed25519.pub \
-  just setup router-provision .local/phone/config.toml
+  just setup router-provision
 ~~~
 
 The recipe downloads and caches the official Ubuntu 24.04 cloud image, creates
@@ -91,7 +97,7 @@ firewall-apply` whenever source mappings change.
 Create the persistent overlay and domain:
 
 ~~~shell
-just setup android-create android-game-01 .local/phone/config.toml
+just setup android-create android-game-01
 sudo virsh start android-game-01
 ~~~
 
@@ -116,7 +122,7 @@ authorized.
 The validated bundle is available with:
 
 ~~~shell
-just setup android-adb-keys android-game-01 .local/phone/config.toml
+just setup android-adb-keys android-game-01
 ~~~
 
 ## Controller replacement

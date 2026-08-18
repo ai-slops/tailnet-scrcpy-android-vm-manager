@@ -22,7 +22,7 @@ Internet access for Tailscale coordination, DERP, and guest NAT.
 Run the reproducible host-side provisioner:
 
 ~~~shell
-ROUTER_SSH_PUBLIC_KEY_FILE=/path/to/id_ed25519.pub just setup router-provision CONFIG
+ROUTER_SSH_PUBLIC_KEY_FILE=/path/to/id_ed25519.pub just setup router-provision
 ~~~
 
 It caches the official Ubuntu 24.04 image, creates the overlay and NoCloud seed,
@@ -99,7 +99,7 @@ instead of one generated rule per controller.
 For inventory changes, prefer the host-side synchronized reconciliation:
 
 ~~~shell
-just reconcile-all /path/to/router_ssh_key CONFIG
+just reconcile-all /path/to/router_ssh_key
 ~~~
 
 It updates the router config, static leases, nftables set, and advertised `/32`

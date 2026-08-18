@@ -1,4 +1,5 @@
 set shell := ["sh", "-eu", "-c"]
+default_config := env_var_or_default("MANAGER_CONFIG", justfile_directory() + "/.local/config.toml")
 
 # Prove host KVM and rootless Podman access while diagnosing a deployment host.
 host-smoke:
@@ -9,27 +10,27 @@ router-console:
     virsh console tailnet-android-router
 
 # Print the router libvirt domain XML.
-router-xml config="config.example.toml":
+router-xml config=default_config:
     cargo run -q -p hostctl -- --config "{{ config }}" router-domain-xml
 
 # Print the host-address-free Android guest network XML.
-guest-network-xml config="config.example.toml":
+guest-network-xml config=default_config:
     cargo run -q -p hostctl -- --config "{{ config }}" guest-network-xml
 
 # Print one Android VM's libvirt domain XML.
-android-xml name config="config.example.toml":
+android-xml name config=default_config:
     cargo run -q -p hostctl -- --config "{{ config }}" vm domain-xml "{{ name }}"
 
 # Print the router's two-NIC netplan configuration.
-router-netplan config="config.example.toml":
+router-netplan config=default_config:
     cargo run -q -p routerctl -- --config "{{ config }}" netplan-print
 
 # Print the router's static Android DHCP/DNS configuration.
-router-dnsmasq config="config.example.toml":
+router-dnsmasq config=default_config:
     cargo run -q -p routerctl -- --config "{{ config }}" dnsmasq-print
 
 # Validate generated network, router, and Android libvirt XML.
-libvirt-xml-check name="android-game-01" config="config.example.toml":
+libvirt-xml-check name="android-game-01" config=default_config:
     artifact_dir=$(mktemp -d /tmp/tailnet-android-xml.XXXXXX); \
     trap 'rm -r "$artifact_dir"' EXIT INT TERM; \
     cargo run -q -p hostctl -- --config "{{ config }}" guest-network-xml >"$artifact_dir/guest.xml"; \
